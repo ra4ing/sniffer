@@ -20,11 +20,18 @@ set(HEADER_DIR ${CMAKE_SOURCE_DIR}/include)
 set(SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
 set(FORMS_DIR ${CMAKE_SOURCE_DIR}/forms)
 set(CMAKE_AUTOUIC_SEARCH_PATHS ${FORMS_DIR})
+
+file(GLOB source_files ${SOURCE_DIR}/*.cpp)
+file(GLOB header_files ${HEADER_DIR}/*.h)
+file(GLOB forms_files ${FORMS_DIR}/*.ui)
+
 set(PROJECT_SOURCES
-        ${SOURCE_DIR}/main.cpp
-        ${SOURCE_DIR}/mainwindow.cpp
-        ${HEADER_DIR}/mainwindow.h
-        ${FORMS_DIR}/mainwindow.ui
+        ${source_files}
+        ${header_files}
+        ${forms_files}
+        # ${SOURCE_DIR}/mainwindow.cpp
+        # ${HEADER_DIR}/mainwindow.h
+        # ${FORMS_DIR}/mainwindow.ui
         ${TS_FILES}
 )
 
@@ -55,7 +62,8 @@ else()
     qt5_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
 endif()
 
-target_link_libraries(sniffer PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+find_library(PCAP_LIB pcap)
+target_link_libraries(sniffer PRIVATE Qt${QT_VERSION_MAJOR}::Widgets ${PCAP_LIB})
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
