@@ -11,6 +11,32 @@
 #include <netinet/udp.h>
 #include <netinet/if_ether.h>
 #include <sstream>
+#include <map>
+
+// ICMP 类型描述映射
+const std::map<uint8_t, std::string> icmpTypeDescriptions = {
+    {0, "Echo Reply (0)"},
+    {3, "Destination Unreachable (3)"},
+    {4, "Source Quench (4)"},
+    {5, "Redirect (5)"},
+    {8, "Echo Request (8)"},
+    {11, "Time Exceeded (11)"},
+    {12, "Parameter Problem (12)"}
+};
+
+// ICMP 代码描述映射（针对类型 3: Destination Unreachable）
+const std::map<uint8_t, std::string> icmpCodeDestUnreachable = {
+    {0, "Net Unreachable (0)"},
+    {1, "Host Unreachable (1)"},
+    {2, "Protocol Unreachable (2)"},
+    {3, "Port Unreachable (3)"}
+};
+
+// ICMP 代码描述映射（针对类型 11: Time Exceeded）
+const std::map<uint8_t, std::string> icmpCodeTimeExceeded = {
+    {0, "TTL Expired (0)"},
+    {1, "Fragment Reassembly Time Exceeded (1)"}
+};
 
 typedef struct ParsedPacket {
     // Ethernet

@@ -50,6 +50,7 @@ private:
     std::shared_ptr<PacketParser> parser;
 
     std::vector<QTreeWidgetItem*> ethernetItems;
+    std::vector<QString> hexViews;
 
     void setupPacketList();
     void setupAction();
@@ -63,6 +64,6 @@ private:
 
     void updatePacketList(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header);
     void updatePacketDetail(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header);
-    void updateHexView(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header);
+    void updateHexView(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header, const u_char* packet);
 };
 #endif // MAINWINDOW_H

@@ -29,7 +29,7 @@ MainWindow::~MainWindow() {
     sniffer->stopCapture();
     sniffer->closeDev();
     for (auto ethernetItem : ethernetItems)
-            delete ethernetItem;
+        delete ethernetItem;
     delete ui;
 }
 
@@ -156,7 +156,7 @@ void MainWindow::updatePacketDetail(ParsedPacket* parsedPacket, const struct pca
             if (parsedPacket->tcpFlags & TH_PUSH) flagsDescription.append("PSH ");
             if (parsedPacket->tcpFlags & TH_ACK)  flagsDescription.append("ACK ");
             if (parsedPacket->tcpFlags & TH_URG)  flagsDescription.append("URG ");
-            
+
             if (flagsDescription.isEmpty()) {
                 flagsDescription = "NONE";
             }
@@ -170,7 +170,8 @@ void MainWindow::updatePacketDetail(ParsedPacket* parsedPacket, const struct pca
             tcpItem->addChild(new QTreeWidgetItem(QStringList() << ackNumber));
             tcpItem->addChild(new QTreeWidgetItem(QStringList() << tcpFlags));
             tcpItem->addChild(new QTreeWidgetItem(QStringList() << windowSize));
-        } else if (parsedPacket->protocol == IPPROTO_UDP) {
+        }
+        else if (parsedPacket->protocol == IPPROTO_UDP) {
             QTreeWidgetItem* udpItem = new QTreeWidgetItem(ipItem);
             udpItem->setText(0, "User Datagram Protocol (UDP)");
 
@@ -179,12 +180,34 @@ void MainWindow::updatePacketDetail(ParsedPacket* parsedPacket, const struct pca
 
             udpItem->addChild(new QTreeWidgetItem(QStringList() << srcPort));
             udpItem->addChild(new QTreeWidgetItem(QStringList() << dstPort));
-        } else if (parsedPacket->protocol == IPPROTO_ICMP) {
+        }
+        else if (parsedPacket->protocol == IPPROTO_ICMP) {
             QTreeWidgetItem* icmpItem = new QTreeWidgetItem(ipItem);
             icmpItem->setText(0, "Internet Control Message Protocol (ICMP)");
 
-            QString icmpType = QString("ICMP Type: %1").arg(parsedPacket->icmpType);
-            QString icmpCode = QString("ICMP Code: %1").arg(parsedPacket->icmpCode);
+            // 查找 ICMP 类型描述
+            std::string icmpTypeDescription = icmpTypeDescriptions.count(parsedPacket->icmpType)
+                ? icmpTypeDescriptions.at(parsedPacket->icmpType)
+                : "Unknown Type (" + std::to_string(parsedPacket->icmpType) + ")";
+
+            // 查找 ICMP 代码描述，根据不同类型处理不同的代码
+            std::string icmpCodeDescription;
+            if (parsedPacket->icmpType == 3) {  // Destination Unreachable
+                icmpCodeDescription = icmpCodeDestUnreachable.count(parsedPacket->icmpCode)
+                    ? icmpCodeDestUnreachable.at(parsedPacket->icmpCode)
+                    : "Unknown Code (" + std::to_string(parsedPacket->icmpCode) + ")";
+            }
+            else if (parsedPacket->icmpType == 11) {  // Time Exceeded
+                icmpCodeDescription = icmpCodeTimeExceeded.count(parsedPacket->icmpCode)
+                    ? icmpCodeTimeExceeded.at(parsedPacket->icmpCode)
+                    : "Unknown Code (" + std::to_string(parsedPacket->icmpCode) + ")";
+            }
+            else {
+                icmpCodeDescription = "Code: (" + std::to_string(parsedPacket->icmpCode) + ")";
+            }
+
+            QString icmpType = QString("ICMP Type: %1").arg(QString::fromStdString(icmpTypeDescription));
+            QString icmpCode = QString("ICMP Code: %1").arg(QString::fromStdString(icmpCodeDescription));
 
             icmpItem->addChild(new QTreeWidgetItem(QStringList() << icmpType));
             icmpItem->addChild(new QTreeWidgetItem(QStringList() << icmpCode));
@@ -193,8 +216,39 @@ void MainWindow::updatePacketDetail(ParsedPacket* parsedPacket, const struct pca
     ethernetItems.push_back(ethernetItem);
 }
 
-void MainWindow::setupConnection() {
+void MainWindow::updateHexView(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header, const u_char* packet) {
+    QString hexOutput;
+    QString asciiOutput;
+    QString combinedOutput;
 
+    unsigned int length = header->caplen;
+    for (unsigned int i = 0; i < length; i += 16) {
+        hexOutput.append(QString("%1   ").arg(i, 4, 16, QChar('0')));
+
+        asciiOutput.clear();
+
+        for (unsigned int j = 0; j < 16; ++j) {
+            if (i + j < length) {
+                hexOutput.append(QString("%1 ").arg(packet[i + j], 2, 16, QChar('0')).toUpper());
+
+                char ch = static_cast<char>(packet[i + j]);
+                if (isprint(ch)) {
+                    asciiOutput.append(ch);
+                } else {
+                    asciiOutput.append('.');
+                }
+            } else {
+                hexOutput.append("   ");
+            }
+        }
+
+        combinedOutput.append(hexOutput + "  " + asciiOutput + "\n");
+        hexOutput.clear();
+    }
+    hexViews.push_back(combinedOutput);
+}
+
+void MainWindow::setupConnection() {
     /* exit */
     connect(exitAction, &QAction::triggered, this, [this]() {
         this->close();
@@ -234,6 +288,7 @@ void MainWindow::setupConnection() {
 
         updatePacketList(parsedPacket, header);
         updatePacketDetail(parsedPacket, header);
+        updateHexView(parsedPacket, header, packet);
         };
 
     /* startCapture */
@@ -291,6 +346,12 @@ void MainWindow::setupConnection() {
             ui->packetDetails->addTopLevelItem(ethernetItems[currentRow]->clone());
             ui->packetDetails->expandAll();
         }
+
+        if (currentRow >= 0 && currentRow < hexViews.size()) {
+            ui->hexView->clear();
+            ui->hexView->setPlainText(hexViews[currentRow]);
+        }
+        
         });
 }
 
@@ -299,10 +360,13 @@ void MainWindow::setupMenu() {
     deviceMenu = ui->menubar->addMenu("Device");
     analysisMenu = ui->menubar->addMenu("Analysis");
     statisticsMenu = ui->menubar->addMenu("Statistics");
-    helpMenu = ui->menubar->addMenu("Help");
 
     fileMenu->addAction(startCaptureAction);
+    fileMenu->addAction(stopCaptureAction);
     fileMenu->addAction(exitAction);
+
+    deviceMenu->addAction(searchDeviceAction);
+    deviceMenu->addAction(closeDeviceAction);
 }
 
 
