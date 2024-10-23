@@ -1,13 +1,16 @@
 #include "mainwindow.h"
 #include "sniffer.h"
 
+#include <thread>
 #include <QApplication>
 #include <QLocale>                      
 #include <QTranslator>
 
 int main(int argc, char *argv[])
 {
-    // QApplication a(argc, argv);
+    // std::thread 
+
+    QApplication a(argc, argv);
 
     // QTranslator translator;
     // const QStringList uiLanguages = QLocale::system().uiLanguages();
@@ -18,13 +21,10 @@ int main(int argc, char *argv[])
     //         break;
     //     }
     // }
-    // MainWindow w;
-    // w.show();
-    // return a.exec();
+    MainWindow w;
+    w.show();
+    return a.exec();
 
-    Sniffer sniffer;
-    sniffer.setSniffer("eth0");
-    sniffer.openDev();
-    sniffer.closeDev();
-    // sniffer.startCapture();
+    // Sniffer sniffer;
+    // sniffer.getDevs();
 }

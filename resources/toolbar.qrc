@@ -1,0 +1,12 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/resources">
+    <file>images/start_capture.png</file>
+    <file>images/stop_capture.png</file>
+    <file>images/open_packet.png</file>
+    <file>images/save_packet.png</file>
+    <file>images/enable_scrolling.png</file>
+    <file>images/exit.png</file>
+    <file>images/device.png</file>
+    <file>images/search_device.png</file>
+</qresource>
+</RCC>

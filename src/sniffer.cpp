@@ -1,8 +1,9 @@
 #include "sniffer.h"
 #include <iostream>
 #include <string.h>
+#include <thread>
 
-Sniffer::Sniffer(int snaplen_, int promisc_, int to_ms_){
+Sniffer::Sniffer(int snaplen_, int promisc_, int to_ms_) {
     if (snaplen_ < 0) {
         throw std::invalid_argument("snaplen can't be negative");
     }
@@ -15,14 +16,13 @@ Sniffer::Sniffer(int snaplen_, int promisc_, int to_ms_){
         throw std::invalid_argument("to_ms can't be negative");
     }
 
-
     snaplen = snaplen_;
     promisc = promisc_;
     to_ms = to_ms_;
     allDevs = nullptr;
     handle = nullptr;
     isCapturing = false;
-    packetHandler = nullptr;
+    // packetHandler = nullptr;
 }
 
 Sniffer::~Sniffer() {
@@ -37,7 +37,11 @@ bool Sniffer::setSniffer(
     int promisc_,
     int to_ms_) {
 
-    getDevs();
+    if (allDevs == nullptr) {
+        std::cerr << "No device found" << std::endl;
+        return false;
+    }
+
     bool haveDev = false;
     for (pcap_if_t* dev = allDevs; dev != nullptr; dev = dev->next) {
         if (!strcmp(dev->name, devName_.c_str())) {
@@ -64,7 +68,7 @@ bool Sniffer::setSniffer(
 }
 
 pcap_if_t* Sniffer::getDevs() {
-    if (allDevs) {
+    if (allDevs == nullptr) {
         pcap_freealldevs(allDevs);
     }
 
@@ -77,24 +81,24 @@ pcap_if_t* Sniffer::getDevs() {
 }
 
 bool Sniffer::openDev() {
-    if (handle) {
-        std::cerr << "Device has beening opened" << std::endl;
+    if (handle != nullptr) {
+        std::cerr << "openDev: Device has beening opened" << std::endl;
         return false;
     }
 
     handle = pcap_open_live(devName.c_str(), snaplen, promisc, to_ms, errBuf);
     if (handle == nullptr) {
-        std::cerr << "Error opening device: " << errBuf << std::endl;
+        std::cerr << "openDev: Error opening device: " << errBuf << std::endl;
         return false;
     }
 
     isCapturing = false;
+    std::cout << "opened: " << devName << std::endl;
     return true;
 }
 
 bool Sniffer::closeDev() {
     if (handle == nullptr) {
-        std::cerr << "Device has beening closed" << std::endl;
         return false;
     }
 
@@ -103,26 +107,43 @@ bool Sniffer::closeDev() {
     }
 
     pcap_close(handle);
+    handle = nullptr;
+    std::cout << "closed: " << devName << std::endl;
     return true;
 }
 
-bool Sniffer::startCapture() {
-    if (handle != nullptr) {
-        std::cerr << "Device has beening opened" << std::endl;
+static std::function<void(u_char* args, const struct pcap_pkthdr* header, const u_char* packet)>* handlerFunction;
+static void pcapCallback(u_char* user, const struct pcap_pkthdr* header, const u_char* packet) {
+    (*handlerFunction)(user, header, packet);
+}
+
+bool Sniffer::startCapture(std::function<void(u_char* user, const struct pcap_pkthdr* header, const u_char* packet)> packetHandler) {
+    if (handle == nullptr) {
+        std::cerr << "startCapture: Device has not opened" << std::endl;
         return false;
     }
-        
+
     if (isCapturing) {
-        std::cerr << "Device is monitoring" << std::endl;
+        std::cerr << "startCapture: Device is monitoring" << std::endl;
         return false;
     }
 
     if (packetHandler == nullptr) {
-        std::cerr << "Callback function not setted" << std::endl;
+        std::cerr << "startCapture: Callback function not setted" << std::endl;
         return false;
     }
-    pcap_loop(handle, 0, packetHandler, nullptr);
+
+    // 创建时间上下文并获取当前时间作为开始时间
+    CaptureContext* context = new CaptureContext;
+    gettimeofday(&context->startTime, nullptr);  // 获取当前时间，作为捕获开始时间
+
+    handlerFunction = &packetHandler;
+
     isCapturing = true;
+    std::cout << "capturing: " << devName << std::endl;
+
+    pcap_loop(handle, 0, pcapCallback, reinterpret_cast<u_char*>(context));
+
     return true;
 }
 
@@ -139,6 +160,7 @@ bool Sniffer::stopCapture() {
 
     pcap_breakloop(handle);
     isCapturing = false;
+    std::cout << "stop capture: " << devName << std::endl;
     return true;
 }
 
@@ -161,10 +183,11 @@ bool Sniffer::applyFilter(const std::string& filter) {
     }
 
     pcap_freecode(&fp);
+    std::cout << "filter applied: " << filter << std::endl;
     return true;
 }
 
-bool Sniffer::saveCapture(const std::string &filename, const struct pcap_pkthdr *header, const u_char *packet) {
+bool Sniffer::saveCapture(const std::string& filename, const struct pcap_pkthdr* header, const u_char* packet) {
     if (handle == nullptr) {
         std::cerr << "No devices monitored" << std::endl;
         return false;
@@ -179,6 +202,7 @@ bool Sniffer::saveCapture(const std::string &filename, const struct pcap_pkthdr 
 
     pcap_dump(reinterpret_cast<u_char*>(dumpfile), header, packet);
     pcap_dump_close(dumpfile);
+    std::cout << "packet saved:" << filename << std::endl;
     return true;
 }
 

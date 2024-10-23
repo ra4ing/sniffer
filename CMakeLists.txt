@@ -16,6 +16,7 @@ set(TS_FILES sniffer_zh_CN.ts)
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
+set(RESOURCES_DIR ${CMAKE_SOURCE_DIR}/resources)
 set(HEADER_DIR ${CMAKE_SOURCE_DIR}/include)
 set(SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
 set(FORMS_DIR ${CMAKE_SOURCE_DIR}/forms)
@@ -24,8 +25,10 @@ set(CMAKE_AUTOUIC_SEARCH_PATHS ${FORMS_DIR})
 file(GLOB source_files ${SOURCE_DIR}/*.cpp)
 file(GLOB header_files ${HEADER_DIR}/*.h)
 file(GLOB forms_files ${FORMS_DIR}/*.ui)
+file(GLOB resources_files ${RESOURCES_DIR}/*.qrc)
 
 set(PROJECT_SOURCES
+        ${resources_files}
         ${source_files}
         ${header_files}
         ${forms_files}
