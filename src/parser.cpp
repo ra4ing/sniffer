@@ -1,6 +1,8 @@
 #include "parser.h"
 #include <iostream>
 #include <arpa/inet.h>
+#include <netinet/ether.h>
+#include <netinet/ip_icmp.h>
 
 PacketParser::PacketParser() {}
 
@@ -10,72 +12,72 @@ ParsedPacket* PacketParser::parsePacket(const struct pcap_pkthdr* header, const 
 
     ParsedPacket* parsedPacket = new ParsedPacket();
     parseEthernetHeader(packet, parsedPacket);
-    parseIPHeader(packet, parsedPacket);
 
-    if (parsedPacket->protocol == IPPROTO_TCP)
-        parseTCPHeader(packet, parsedPacket);
-    else if (parsedPacket->protocol == IPPROTO_UDP)
-        parseUDPHeader(packet, parsedPacket);
+    // IP
+    if (parsedPacket->etherType == 0x0800) {  // IPv4
+        parseIPHeader(packet, parsedPacket);
 
+        // TCP UDP ICMP
+        if (parsedPacket->protocol == IPPROTO_TCP)
+            parseTCPHeader(packet, parsedPacket);
+        else if (parsedPacket->protocol == IPPROTO_UDP)
+            parseUDPHeader(packet, parsedPacket);
+        else if (parsedPacket->protocol == IPPROTO_ICMP)
+            parseICMPHeader(packet, parsedPacket);
+        else
+            return parsedPacket;
+    }
     return parsedPacket;
 }
 
 void PacketParser::parseEthernetHeader(const u_char* packet, ParsedPacket* parsedPacket) {
-    struct ether_header* eth_header = (struct ether_header*)packet;
-    char mac[18];
+    struct ether_header* ethernetHeader = (struct ether_header*)packet;
 
-    snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
-        eth_header->ether_shost[0],
-        eth_header->ether_shost[1],
-        eth_header->ether_shost[2],
-        eth_header->ether_shost[3],
-        eth_header->ether_shost[4],
-        eth_header->ether_shost[5]
-    );
-    parsedPacket->srcMAC = std::string(mac);
+    // 解析源和目的 MAC 地址
+    parsedPacket->srcMAC = ether_ntoa((struct ether_addr*)ethernetHeader->ether_shost);
+    parsedPacket->destMAC = ether_ntoa((struct ether_addr*)ethernetHeader->ether_dhost);
 
-    snprintf(mac, sizeof(mac), "%02x:%02x:%02x:%02x:%02x:%02x",
-        eth_header->ether_dhost[0],
-        eth_header->ether_dhost[1],
-        eth_header->ether_dhost[2],
-        eth_header->ether_dhost[3],
-        eth_header->ether_dhost[4],
-        eth_header->ether_dhost[5]
-    );
-    parsedPacket->srcMAC = std::string(mac);
+    // 解析以太类型字段
+    parsedPacket->etherType = ntohs(ethernetHeader->ether_type);
 }
 
 void PacketParser::parseIPHeader(const u_char* packet, ParsedPacket* parsedPacket) {
-    struct ip* ip_header = (struct ip*)(packet + sizeof(struct ether_header));
-    parsedPacket->srcIP = std::string(inet_ntoa(ip_header->ip_src));
-    parsedPacket->destIP = std::string(inet_ntoa(ip_header->ip_dst));
+    const struct ip* ipHeader = (struct ip*)(packet + sizeof(struct ether_header));
 
-    parsedPacket->protocol = ip_header->ip_p;
+    parsedPacket->srcIP = inet_ntoa(ipHeader->ip_src);
+    parsedPacket->destIP = inet_ntoa(ipHeader->ip_dst);
+
+    parsedPacket->ipVersion = (ipHeader->ip_v == 4) ? 4 : 6;
+    parsedPacket->ttl = ipHeader->ip_ttl;
+    parsedPacket->totalLength = ntohs(ipHeader->ip_len);
+
+    parsedPacket->protocol = ipHeader->ip_p;
 }
 
 void PacketParser::parseTCPHeader(const u_char* packet, ParsedPacket* parsedPacket) {
-    struct ip* ip_header = (struct ip*)(packet + sizeof(struct ether_header));
-    struct tcphdr* tcp_header = (struct tcphdr*)(packet + sizeof(struct ether_header) + ip_header->ip_hl * 4);
+    const struct tcphdr* tcpHeader = (struct tcphdr*)(packet + sizeof(struct ether_header) + sizeof(struct ip));
 
-    parsedPacket->srcPort = std::to_string(ntohs(tcp_header->source));
-    parsedPacket->destPort = std::to_string(ntohs(tcp_header->dest));
-    parsedPacket->tcpFlags = tcp_header->th_flags;
+    parsedPacket->srcPort = std::to_string(ntohs(tcpHeader->source));
+    parsedPacket->destPort = std::to_string(ntohs(tcpHeader->dest));
+
+    parsedPacket->seqNumber = ntohl(tcpHeader->seq);
+    parsedPacket->ackNumber = ntohl(tcpHeader->ack_seq);
+
+    parsedPacket->tcpFlags = tcpHeader->th_flags;
+
+    parsedPacket->windowSize = ntohs(tcpHeader->window);
 }
 
 void PacketParser::parseUDPHeader(const u_char* packet, ParsedPacket* parsedPacket) {
-    struct ip* ip_header = (struct ip*)(packet + sizeof(struct ether_header));
-    struct udphdr* udp_header = (struct udphdr*)(packet + sizeof(struct ether_header) + ip_header->ip_hl * 4);
+    const struct udphdr* udpHeader = (struct udphdr*)(packet + sizeof(struct ether_header) + sizeof(struct ip));
 
-    parsedPacket->srcPort = std::to_string(ntohs(udp_header->source));
-    parsedPacket->destPort = std::to_string(ntohs(udp_header->dest));
+    parsedPacket->srcPort = std::to_string(ntohs(udpHeader->source));
+    parsedPacket->destPort = std::to_string(ntohs(udpHeader->dest));
 }
 
+void PacketParser::parseICMPHeader(const u_char* packet, ParsedPacket* parsedPacket) {
+    const struct icmphdr* icmpHeader = (struct icmphdr*)(packet + sizeof(struct ether_header) + sizeof(struct ip));
 
-
-// void PacketParser::parseICMPHeader(const u_char* packet, ParsedPacket& parsedPacket) {
-//     struct ip* ip_header = (struct ip*)(packet + sizeof(struct ether_header));
-//     struct tcphdr* icmp_header = (struct tcphdr*)(packet + sizeof(struct ether_header) + ip_header->ip_hl * 4);
-
-//     parsedPacket.srcPort = std::to_string(ntohs(udp_header->source));
-//     parsedPacket.destPort = std::to_string(ntohs(udp_header->dest));
-// }
+    parsedPacket->icmpType = icmpHeader->type;
+    parsedPacket->icmpCode = icmpHeader->code;
+}

@@ -28,6 +28,8 @@ MainWindow::MainWindow(QWidget* parent)
 MainWindow::~MainWindow() {
     sniffer->stopCapture();
     sniffer->closeDev();
+    for (auto ethernetItem : ethernetItems)
+            delete ethernetItem;
     delete ui;
 }
 
@@ -46,12 +48,17 @@ void MainWindow::setupAction() {
         };
 
     startCaptureAction = createAction(":resources/images/start_capture.png", "Start Capture");
+    startCaptureAction->setEnabled(false);
+
     stopCaptureAction = createAction(":resources/images/stop_capture.png", "Stop Capture");
+    stopCaptureAction->setEnabled(false);
+
     openPacketAction = createAction(":resources/images/open_packet.png", "Open Packet");
     savePacketAction = createAction(":resources/images/save_packet.png", "Save Packet");
     enableScrollingAction = createAction(":resources/images/enable_scrolling.png", "Enable Scrolling");
     exitAction = createAction(":resources/images/exit.png", "Exit");
     searchDeviceAction = createAction(":resources/images/search_device.png", "Search Device");
+
     closeDeviceAction = createAction(":resources/images/close_device.png", "Close Device");
     closeDeviceAction->setCheckable(true);
     closeDeviceAction->setChecked(true);
@@ -59,15 +66,141 @@ void MainWindow::setupAction() {
     deviceActions.push_back(closeDeviceAction);
 }
 
+void MainWindow::updatePacketList(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
+    int row = ui->packetList->rowCount();
+    ui->packetList->insertRow(row);
+
+    if (parsedPacket == nullptr) {
+        ui->packetList->setItem(row, 5, new QTableWidgetItem("Header or Packet Error: nullptr"));
+        return;
+    }
+
+    timeval packetTime = header->ts;
+    long secondsStart = sniffer->startTime.tv_sec;
+    long microsecondsStart = sniffer->startTime.tv_usec;
+    long secondsElapsed = packetTime.tv_sec - secondsStart;
+    long microsecondsElapsed = packetTime.tv_usec - microsecondsStart;
+    double totalTimeElapsed = secondsElapsed + (microsecondsElapsed / 1000000.0);
+    QString formattedTime = QString::number(totalTimeElapsed, 'f', 6);
+
+    ui->packetList->setItem(row, 0, new QTableWidgetItem(formattedTime));
+
+    QString source, destination, protocol, info;
+    if (parsedPacket->protocol == IPPROTO_TCP) {
+        source = QString::fromStdString(parsedPacket->srcIP);
+        destination = QString::fromStdString(parsedPacket->destIP);
+        protocol = "TCP";
+        info = QString("Src Port: %1, Dst Port: %2, Flags: 0x%3")
+            .arg(QString::fromStdString(parsedPacket->srcPort))
+            .arg(QString::fromStdString(parsedPacket->destPort))
+            .arg(QString::number(parsedPacket->tcpFlags, 16));  // TCP flags in hex
+    }
+    else if (parsedPacket->protocol == IPPROTO_UDP) {
+        source = QString::fromStdString(parsedPacket->srcIP);
+        destination = QString::fromStdString(parsedPacket->destIP);
+        protocol = "UDP";
+        info = QString("Src Port: %1, Dst Port: %2")
+            .arg(QString::fromStdString(parsedPacket->srcPort))
+            .arg(QString::fromStdString(parsedPacket->destPort));
+    }
+    else {
+        source = QString::fromStdString(parsedPacket->srcMAC);
+        destination = QString::fromStdString(parsedPacket->destMAC);
+        protocol = "Other";
+    }
+
+    ui->packetList->setItem(row, 1, new QTableWidgetItem(source));
+    ui->packetList->setItem(row, 2, new QTableWidgetItem(destination));
+    ui->packetList->setItem(row, 3, new QTableWidgetItem(protocol));
+    ui->packetList->setItem(row, 4, new QTableWidgetItem(QString::number(header->caplen)));
+    ui->packetList->setItem(row, 5, new QTableWidgetItem(info));
+}
+
+void MainWindow::updatePacketDetail(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
+    QTreeWidgetItem* ethernetItem = new QTreeWidgetItem();
+    ethernetItem->setText(0, "Ethernet II");
+
+    // Ethernet
+    QString srcMAC = QString("Source MAC: %1").arg(QString::fromStdString(parsedPacket->srcMAC));
+    QString dstMAC = QString("Destination MAC: %1").arg(QString::fromStdString(parsedPacket->destMAC));
+    ethernetItem->addChild(new QTreeWidgetItem(QStringList() << srcMAC));
+    ethernetItem->addChild(new QTreeWidgetItem(QStringList() << dstMAC));
+
+    if (parsedPacket->protocol == IPPROTO_TCP || IPPROTO_UDP || IPPROTO_ICMP) {
+        QTreeWidgetItem* ipItem = new QTreeWidgetItem(ethernetItem);
+        ipItem->setText(0, "Internet Protocol (IP)");
+
+        QString srcIP = QString("Source IP: %1").arg(QString::fromStdString(parsedPacket->srcIP));
+        QString dstIP = QString("Destination IP: %1").arg(QString::fromStdString(parsedPacket->destIP));
+        QString ttl = QString("TTL: %1").arg(parsedPacket->ttl);
+        QString totalLength = QString("Total Length: %1 bytes").arg(parsedPacket->totalLength);
+        ipItem->addChild(new QTreeWidgetItem(QStringList() << srcIP));
+        ipItem->addChild(new QTreeWidgetItem(QStringList() << dstIP));
+        ipItem->addChild(new QTreeWidgetItem(QStringList() << ttl));
+        ipItem->addChild(new QTreeWidgetItem(QStringList() << totalLength));
+
+
+        if (parsedPacket->protocol == IPPROTO_TCP) {
+            QTreeWidgetItem* tcpItem = new QTreeWidgetItem(ipItem);
+            tcpItem->setText(0, "Transmission Control Protocol (TCP)");
+
+            QString srcPort = QString("Source Port: %1").arg(QString::fromStdString(parsedPacket->srcPort));
+            QString dstPort = QString("Destination Port: %1").arg(QString::fromStdString(parsedPacket->destPort));
+            QString seqNumber = QString("Sequence Number: %1").arg(parsedPacket->seqNumber);
+            QString ackNumber = QString("Acknowledgment Number: %1").arg(parsedPacket->ackNumber);
+
+            QString flagsDescription;
+            if (parsedPacket->tcpFlags & TH_FIN)  flagsDescription.append("FIN ");
+            if (parsedPacket->tcpFlags & TH_SYN)  flagsDescription.append("SYN ");
+            if (parsedPacket->tcpFlags & TH_RST)  flagsDescription.append("RST ");
+            if (parsedPacket->tcpFlags & TH_PUSH) flagsDescription.append("PSH ");
+            if (parsedPacket->tcpFlags & TH_ACK)  flagsDescription.append("ACK ");
+            if (parsedPacket->tcpFlags & TH_URG)  flagsDescription.append("URG ");
+            
+            if (flagsDescription.isEmpty()) {
+                flagsDescription = "NONE";
+            }
+            QString tcpFlags = QString("TCP Flags: %1 (0x%2)").arg(flagsDescription.trimmed()).arg(QString::number(parsedPacket->tcpFlags, 16));
+
+            QString windowSize = QString("Window Size: %1").arg(parsedPacket->windowSize);
+
+            tcpItem->addChild(new QTreeWidgetItem(QStringList() << srcPort));
+            tcpItem->addChild(new QTreeWidgetItem(QStringList() << dstPort));
+            tcpItem->addChild(new QTreeWidgetItem(QStringList() << seqNumber));
+            tcpItem->addChild(new QTreeWidgetItem(QStringList() << ackNumber));
+            tcpItem->addChild(new QTreeWidgetItem(QStringList() << tcpFlags));
+            tcpItem->addChild(new QTreeWidgetItem(QStringList() << windowSize));
+        } else if (parsedPacket->protocol == IPPROTO_UDP) {
+            QTreeWidgetItem* udpItem = new QTreeWidgetItem(ipItem);
+            udpItem->setText(0, "User Datagram Protocol (UDP)");
+
+            QString srcPort = QString("Source Port: %1").arg(QString::fromStdString(parsedPacket->srcPort));
+            QString dstPort = QString("Destination Port: %1").arg(QString::fromStdString(parsedPacket->destPort));
+
+            udpItem->addChild(new QTreeWidgetItem(QStringList() << srcPort));
+            udpItem->addChild(new QTreeWidgetItem(QStringList() << dstPort));
+        } else if (parsedPacket->protocol == IPPROTO_ICMP) {
+            QTreeWidgetItem* icmpItem = new QTreeWidgetItem(ipItem);
+            icmpItem->setText(0, "Internet Control Message Protocol (ICMP)");
+
+            QString icmpType = QString("ICMP Type: %1").arg(parsedPacket->icmpType);
+            QString icmpCode = QString("ICMP Code: %1").arg(parsedPacket->icmpCode);
+
+            icmpItem->addChild(new QTreeWidgetItem(QStringList() << icmpType));
+            icmpItem->addChild(new QTreeWidgetItem(QStringList() << icmpCode));
+        }
+    }
+    ethernetItems.push_back(ethernetItem);
+}
 
 void MainWindow::setupConnection() {
 
-    // exit
+    /* exit */
     connect(exitAction, &QAction::triggered, this, [this]() {
         this->close();
         });
 
-    // searchDevice
+    /* searchDevice */
     connect(searchDeviceAction, &QAction::triggered, this, [this]() {
         // clear deviceBar
         for (int i = 1; i < deviceActions.size(); ++i) {
@@ -90,64 +223,20 @@ void MainWindow::setupConnection() {
         this->setupDeviceBar();
         });
 
-    // closeConnect
+    /* closeConnect */
     connect(closeDeviceAction, &QAction::triggered, this, [this]() {
         stopCaptureAction->setEnabled(false);
         startCaptureAction->setEnabled(false);
         });
 
     auto packetHandler = [this](u_char* user, const struct pcap_pkthdr* header, const u_char* packet) {
-        int row = ui->packetList->rowCount();
-        ui->packetList->insertRow(row);
-
         ParsedPacket* parsedPacket = parser->parsePacket(header, packet);
-        if (parsedPacket == nullptr) {
-            ui->packetList->setItem(row, 5, new QTableWidgetItem("Header or Packet Error: nullptr"));
-            return;
-        }
 
-        timeval packetTime = header->ts;
-        long secondsStart = sniffer->startTime.tv_sec;
-        long microsecondsStart = sniffer->startTime.tv_usec;
-        long secondsElapsed = packetTime.tv_sec - secondsStart;
-        long microsecondsElapsed = packetTime.tv_usec - microsecondsStart;
-        double totalTimeElapsed = secondsElapsed + (microsecondsElapsed / 1000000.0);
-        QString formattedTime = QString::number(totalTimeElapsed, 'f', 6);
-
-        ui->packetList->setItem(row, 0, new QTableWidgetItem(formattedTime));
-
-        QString source, destination, protocol, info;
-        if (parsedPacket->protocol == IPPROTO_TCP) {
-            source = QString::fromStdString(parsedPacket->srcIP);
-            destination = QString::fromStdString(parsedPacket->destIP);
-            protocol = "TCP";
-            info = QString("Src Port: %1, Dst Port: %2, Flags: 0x%3")
-                .arg(QString::fromStdString(parsedPacket->srcPort))
-                .arg(QString::fromStdString(parsedPacket->destPort))
-                .arg(QString::number(parsedPacket->tcpFlags, 16));  // TCP flags in hex
-        }
-        else if (parsedPacket->protocol == IPPROTO_UDP) {
-            source = QString::fromStdString(parsedPacket->srcIP);
-            destination = QString::fromStdString(parsedPacket->destIP);
-            protocol = "UDP";
-            info = QString("Src Port: %1, Dst Port: %2")
-                .arg(QString::fromStdString(parsedPacket->srcPort))
-                .arg(QString::fromStdString(parsedPacket->destPort));
-        }
-        else {
-            source = QString::fromStdString(parsedPacket->srcMAC);
-            destination = QString::fromStdString(parsedPacket->destMAC);
-            protocol = "Other";
-        }
-
-        ui->packetList->setItem(row, 1, new QTableWidgetItem(source));
-        ui->packetList->setItem(row, 2, new QTableWidgetItem(destination));
-        ui->packetList->setItem(row, 3, new QTableWidgetItem(protocol));
-        ui->packetList->setItem(row, 4, new QTableWidgetItem(QString::number(header->caplen)));
-        ui->packetList->setItem(row, 5, new QTableWidgetItem(info));
+        updatePacketList(parsedPacket, header);
+        updatePacketDetail(parsedPacket, header);
         };
 
-    // startCapture
+    /* startCapture */
     connect(startCaptureAction, &QAction::triggered, this, [this, packetHandler]() {
         if (!sniffer->openDev()) {
             startCaptureAction->setEnabled(false);
@@ -181,16 +270,28 @@ void MainWindow::setupConnection() {
         stopCaptureAction->setEnabled(true);
         ui->packetList->clearContents();
         ui->packetList->setRowCount(0);
+        for (auto ethernetItem : ethernetItems)
+            delete ethernetItem;
+        ethernetItems.clear();
         });
 
 
-    // stopCapture
+    /* stopCapture */
     connect(stopCaptureAction, &QAction::triggered, this, [this]() {
         sniffer->stopCapture();
         stopCaptureAction->setEnabled(false);
         startCaptureAction->setEnabled(true);
         });
 
+    /* packetList */
+    connect(ui->packetList, &QTableWidget::itemSelectionChanged, this, [this]() {
+        int currentRow = ui->packetList->currentRow() - 1;
+        if (currentRow >= 0 && currentRow < ethernetItems.size()) {
+            ui->packetDetails->clear();
+            ui->packetDetails->addTopLevelItem(ethernetItems[currentRow]->clone());
+            ui->packetDetails->expandAll();
+        }
+        });
 }
 
 void MainWindow::setupMenu() {

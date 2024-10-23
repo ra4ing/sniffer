@@ -5,6 +5,7 @@
 #include "parser.h"
 #include <QMainWindow>
 #include <QActionGroup>
+#include <QTreeWidgetItem>
 #include <memory>
 
 QT_BEGIN_NAMESPACE
@@ -48,6 +49,8 @@ private:
     std::shared_ptr<Sniffer> sniffer;
     std::shared_ptr<PacketParser> parser;
 
+    std::vector<QTreeWidgetItem*> ethernetItems;
+
     void setupPacketList();
     void setupAction();
     void setupMenu();
@@ -57,5 +60,9 @@ private:
     void setupConnection();
 
     void connectDeviceAction(pcap_if_t* dev);
+
+    void updatePacketList(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header);
+    void updatePacketDetail(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header);
+    void updateHexView(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header);
 };
 #endif // MAINWINDOW_H
