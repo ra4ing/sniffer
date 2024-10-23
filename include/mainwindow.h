@@ -4,6 +4,8 @@
 #include "sniffer.h"
 #include "parser.h"
 #include <QMainWindow>
+#include <QActionGroup>
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -19,6 +21,10 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+private:
+    Ui::MainWindow* ui;
+
+    // menu
     QMenu* fileMenu;
     QMenu* deviceMenu;
     QMenu* analysisMenu;
@@ -35,19 +41,21 @@ public:
 
     // deviceBar
     QAction* searchDeviceAction;
+    QAction* closeDeviceAction;
     QList<QAction*> deviceActions;
+    std::shared_ptr<QActionGroup> actionGroup;
 
-private:
-    Ui::MainWindow* ui;
-    Sniffer sniffer;
-    PacketParser parser;
+    std::shared_ptr<Sniffer> sniffer;
+    std::shared_ptr<PacketParser> parser;
 
+    void setupPacketList();
     void setupAction();
-    void setupConnection();
     void setupMenu();
     void setupToolBar();
     void setupDeviceBar();
+
+    void setupConnection();
+
     void connectDeviceAction(pcap_if_t* dev);
-    void packetHandler(u_char* user, const struct pcap_pkthdr* header, const u_char* packet);
 };
 #endif // MAINWINDOW_H

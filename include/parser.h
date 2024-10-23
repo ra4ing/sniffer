@@ -20,6 +20,7 @@ typedef struct ParsedPacket {
     uint8_t protocol;
     std::string srcPort;
     std::string destPort;
+    unsigned int tcpFlags;
     std::string payload;
 
     std::string toString() const {
@@ -42,6 +43,7 @@ typedef struct ParsedPacket {
             << "Protocol: " << protocol << "\n"
             << "Source Port: " << srcPort << "\n"
             << "Destination Port: " << destPort << "\n"
+            << "TCP Flags: 0x" << std::hex << tcpFlags << "\n"
             << "Payload: " << payload << "\n";
         return oss.str();
     }

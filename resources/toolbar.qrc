@@ -8,5 +8,6 @@
     <file>images/exit.png</file>
     <file>images/device.png</file>
     <file>images/search_device.png</file>
+    <file>images/close_device.png</file>
 </qresource>
 </RCC>

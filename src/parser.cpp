@@ -5,6 +5,9 @@
 PacketParser::PacketParser() {}
 
 ParsedPacket* PacketParser::parsePacket(const struct pcap_pkthdr* header, const u_char* packet) {
+    if (header == nullptr || packet == nullptr)
+        return nullptr;
+
     ParsedPacket* parsedPacket = new ParsedPacket();
     parseEthernetHeader(packet, parsedPacket);
     parseIPHeader(packet, parsedPacket);
@@ -56,6 +59,7 @@ void PacketParser::parseTCPHeader(const u_char* packet, ParsedPacket* parsedPack
 
     parsedPacket->srcPort = std::to_string(ntohs(tcp_header->source));
     parsedPacket->destPort = std::to_string(ntohs(tcp_header->dest));
+    parsedPacket->tcpFlags = tcp_header->th_flags;
 }
 
 void PacketParser::parseUDPHeader(const u_char* packet, ParsedPacket* parsedPacket) {
