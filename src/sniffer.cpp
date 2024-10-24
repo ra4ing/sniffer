@@ -181,21 +181,64 @@ int Sniffer::applyFilter(const std::string& filter) {
     return 0;
 }
 
-bool Sniffer::savePacket(const std::string& filename, const struct pcap_pkthdr* header, const u_char* packet) {
+int Sniffer::filterCapturedPackets(const std::string& filter,
+    std::vector<const pcap_pkthdr*>& headers,
+    std::vector<const u_char*>& packets,
+    std::vector<int>& filteredIndex) {
+
     if (handle == nullptr) {
-        std::cerr << "No devices monitored" << std::endl;
-        return false;
+        std::cerr << "No devices opened" << std::endl;
+        return -1;
     }
 
+    struct bpf_program fp;
+    if (pcap_compile(handle, &fp, filter.c_str(), 0, PCAP_NETMASK_UNKNOWN) < 0) {
+        std::cerr << "Error compiling filter: " << pcap_geterr(handle) << std::endl;
+        return -2;
+    }
+
+    for (size_t i = 0; i < headers.size(); ++i) {
+        const struct pcap_pkthdr* header = headers[i];
+        const u_char* packet = packets[i];
+
+        if (pcap_offline_filter(&fp, header, packet))
+            filteredIndex.push_back(i);
+    
+    }
+
+    pcap_freecode(&fp);
+    return true;
+}
+
+bool Sniffer::savePacket(const std::string& filename, const struct pcap_pkthdr* header, const u_char* packet) {
+    pcap_t* tempHandle = nullptr;
+    if (handle == nullptr) {
+
+        char errbuf[PCAP_ERRBUF_SIZE];
+        tempHandle = pcap_open_dead(DLT_EN10MB, 65535);
+        if (tempHandle == nullptr) {
+            std::cerr << "Error creating offline pcap handle" << std::endl;
+            return false;
+        }
+    }
+
+    pcap_t* activeHandle = (handle != nullptr) ? handle : tempHandle;  // 使用现有句柄或离线句柄
+
     pcap_dumper_t* dumpfile;
-    dumpfile = pcap_dump_open(handle, filename.c_str());
+    dumpfile = pcap_dump_open(activeHandle, filename.c_str());
     if (dumpfile == nullptr) {
-        std::cerr << "Error opening dump file: " << pcap_geterr(handle) << std::endl;
+        std::cerr << "Error opening dump file: " << pcap_geterr(activeHandle) << std::endl;
+
+        if (tempHandle != nullptr)
+            pcap_close(tempHandle);
         return false;
     }
 
     pcap_dump(reinterpret_cast<u_char*>(dumpfile), header, packet);
     pcap_dump_close(dumpfile);
+    if (tempHandle != nullptr)
+        pcap_close(tempHandle);
+    
     std::cout << "packet saved:" << filename << std::endl;
     return true;
 }

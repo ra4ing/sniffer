@@ -38,6 +38,7 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::setupPacketList() {
+    // ui->packetList->setSelectionMode(QAbstractItemView::MultiSelection);
     ui->packetList->setColumnWidth(0, 100);  // Time
     ui->packetList->setColumnWidth(1, 150);  // Source
     ui->packetList->setColumnWidth(2, 150);  // Destination
@@ -68,7 +69,8 @@ void MainWindow::setupAction() {
     closeDeviceAction->setChecked(true);
     actionGroup->addAction(closeDeviceAction);
     deviceActions.push_back(closeDeviceAction);
-
+    
+    packetListIndex = 0;
     packetHandler = [this](u_char* user, const struct pcap_pkthdr* header, const u_char* packet) {
         const struct pcap_pkthdr headerCopy = *header;
         const u_char* packetCopy = new u_char[header->caplen];
@@ -78,20 +80,44 @@ void MainWindow::setupAction() {
             ParsedPacket* parsedPacket = parser->parsePacket(&headerCopy, packetCopy);
             headers.push_back(new pcap_pkthdr(headerCopy));
             packets.push_back(packetCopy);
-            updatePacketList(parsedPacket, &headerCopy);
-            updatePacketDetail(parsedPacket, &headerCopy);
-            updateHexView(parsedPacket, &headerCopy, packetCopy);
+            updatePacketLists(parsedPacket, &headerCopy);
+            updatePacketDetails(parsedPacket, &headerCopy);
+            updateHexViews(parsedPacket, &headerCopy, packetCopy);
+
+            pushPacketList(packetListIndex++);
+            
             }, Qt::QueuedConnection);
         };
     captureThread = new CaptureThread(sniffer, packetHandler, this);
 }
 
-void MainWindow::updatePacketList(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
+void MainWindow::pushPacketList(int idx) {
     int row = ui->packetList->rowCount();
     ui->packetList->insertRow(row);
 
+    PacketListData* packetListData = packetLists.at(idx);
+    ui->packetList->setItem(row, 0, packetListData->timeElapsed->clone());
+    ui->packetList->setItem(row, 1, packetListData->source->clone());
+    ui->packetList->setItem(row, 2, packetListData->destination->clone());
+    ui->packetList->setItem(row, 3, packetListData->protocol->clone());
+    ui->packetList->setItem(row, 4, packetListData->length->clone());
+    ui->packetList->setItem(row, 5, packetListData->info->clone());
+    if (autoScrollEnabled)
+        ui->packetList->scrollToBottom();
+}
+
+void MainWindow::updatePacketLists(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
     if (parsedPacket == nullptr) {
-        ui->packetList->setItem(row, 5, new QTableWidgetItem("Header or Packet Error: nullptr"));
+        PacketListData* rowData = new PacketListData(
+        new QTableWidgetItem(""),
+        new QTableWidgetItem(""),
+        new QTableWidgetItem(""),
+        new QTableWidgetItem(""),
+        new QTableWidgetItem(""),
+        new QTableWidgetItem("Packet Error: header or packet")
+        );
+
+        packetLists.push_back(rowData);
         return;
     }
 
@@ -102,8 +128,6 @@ void MainWindow::updatePacketList(ParsedPacket* parsedPacket, const struct pcap_
     long microsecondsElapsed = packetTime.tv_usec - microsecondsStart;
     double totalTimeElapsed = secondsElapsed + (microsecondsElapsed / 1000000.0);
     QString formattedTime = QString::number(totalTimeElapsed, 'f', 6);
-
-    ui->packetList->setItem(row, 0, new QTableWidgetItem(formattedTime));
 
     QString source, destination, protocol, info;
     if (parsedPacket->protocol == IPPROTO_TCP) {
@@ -129,17 +153,20 @@ void MainWindow::updatePacketList(ParsedPacket* parsedPacket, const struct pcap_
         protocol = "Other";
     }
 
-    ui->packetList->setItem(row, 1, new QTableWidgetItem(source));
-    ui->packetList->setItem(row, 2, new QTableWidgetItem(destination));
-    ui->packetList->setItem(row, 3, new QTableWidgetItem(protocol));
-    ui->packetList->setItem(row, 4, new QTableWidgetItem(QString::number(header->caplen)));
-    ui->packetList->setItem(row, 5, new QTableWidgetItem(info));
 
-    if (autoScrollEnabled)
-        ui->packetList->scrollToBottom();
+    PacketListData* rowData = new PacketListData(
+        new QTableWidgetItem(formattedTime),
+        new QTableWidgetItem(source),
+        new QTableWidgetItem(destination),
+        new QTableWidgetItem(protocol),
+        new QTableWidgetItem(QString::number(header->caplen)),
+        new QTableWidgetItem(info)
+        );
+
+    packetLists.push_back(rowData);
 }
 
-void MainWindow::updatePacketDetail(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
+void MainWindow::updatePacketDetails(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
     QTreeWidgetItem* ethernetItem = new QTreeWidgetItem();
     ethernetItem->setText(0, "Ethernet II");
 
@@ -239,7 +266,7 @@ void MainWindow::updatePacketDetail(ParsedPacket* parsedPacket, const struct pca
     ethernetItems.push_back(ethernetItem);
 }
 
-void MainWindow::updateHexView(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header, const u_char* packet) {
+void MainWindow::updateHexViews(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header, const u_char* packet) {
     QString hexOutput;
     QString asciiOutput;
     QString combinedOutput;
@@ -271,6 +298,7 @@ void MainWindow::updateHexView(ParsedPacket* parsedPacket, const struct pcap_pkt
 }
 
 void MainWindow::clearLastCapture() {
+    packetListIndex = 0;
     ui->packetList->clearContents();
     ui->packetList->setRowCount(0);
 
@@ -415,10 +443,10 @@ void MainWindow::setupConnection() {
     /* applyFilter */
     connect(ui->applyFilterButton, &QPushButton::clicked, this, [this]() {
         QString filterText = ui->filterInput->text();
-        if (filterText.isEmpty()) {
-            QMessageBox::information(this, "Filter", "Please input filter");
-            return;
-        }
+        // if (filterText.isEmpty()) {
+        //     QMessageBox::information(this, "Filter", "Please input filter");
+        //     return;
+        // }
 
         int result = sniffer->applyFilter(filterText.toStdString());
         if (result == -1) {
@@ -435,11 +463,50 @@ void MainWindow::setupConnection() {
             return;
         }
 
-        if (ui->savedFilters->findText(filterText) == -1) {
+        ui->filterInput->setStyleSheet("color: black;");
+
+        if (ui->savedFilters->findText(filterText) == -1)
             ui->savedFilters->addItem(filterText);
+        });
+
+    /* afterApplyFilter */
+    connect(ui->afterApplyFilterButton, &QPushButton::clicked, this, [this]() {
+        QString filterText = ui->afterFilterInput->text();
+        // if (filterText.isEmpty()) {
+        //     QMessageBox::information(this, "Filter", "Please input filter");
+        //     return;
+        // }
+
+        filteredIndex.clear();
+        packetListIndex = 0;
+        ui->packetList->clearContents();
+        ui->packetList->setRowCount(0);
+
+        int result = sniffer->filterCapturedPackets(filterText.toStdString(),
+            headers,
+            packets,
+            filteredIndex);
+
+        if (result == -1) {
+            QMessageBox::critical(this, "Filter", "No devices opened");
+            return;
+        }
+        else if (result == -2) {
+            ui->afterFilterInput->setStyleSheet("color: red;");
+            QMessageBox::warning(this, "Filter", "Error compiling filter");
+            return;
         }
 
-        ui->filterInput->setStyleSheet("color: black;");
+        ui->afterFilterInput->setStyleSheet("color: black;");
+        if (ui->afterSavedFilter->findText(filterText) == -1)
+            ui->afterSavedFilter->addItem(filterText);
+
+
+        for (int index : filteredIndex) {
+            std::cout << index << std::endl;
+            pushPacketList(index);
+        }
+
         });
 }
 
@@ -485,6 +552,7 @@ void MainWindow::connectDeviceAction(pcap_if_t* dev) {
 
     connect(deviceAction, &QAction::toggled, this, [&, dev, this](bool checked) {
         ui->filterInput->clear();
+        ui->afterFilterInput->clear();
         if (checked) {
             ui->filterInput->clear();
             if (!sniffer->setSniffer(dev->name)) {
