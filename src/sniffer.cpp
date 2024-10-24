@@ -4,17 +4,14 @@
 #include <thread>
 
 Sniffer::Sniffer(int snaplen_, int promisc_, int to_ms_) {
-    if (snaplen_ < 0) {
+    if (snaplen_ < 0)
         throw std::invalid_argument("snaplen can't be negative");
-    }
 
-    if (promisc_ < 0) {
+    if (promisc_ < 0)
         throw std::invalid_argument("promisc can't be negative");
-    }
 
-    if (to_ms_ < 0) {
+    if (to_ms_ < 0)
         throw std::invalid_argument("to_ms can't be negative");
-    }
 
     snaplen = snaplen_;
     promisc = promisc_;
@@ -161,27 +158,27 @@ void Sniffer::stopCapture() {
     return;
 }
 
-bool Sniffer::applyFilter(const std::string& filter) {
+int Sniffer::applyFilter(const std::string& filter) {
     if (handle == nullptr) {
-        std::cerr << "No devices monitored" << std::endl;
-        return false;
+        std::cerr << "No devices opened" << std::endl;
+        return -1;
     }
 
     struct bpf_program fp;
     if (pcap_compile(handle, &fp, filter.c_str(), 0, PCAP_NETMASK_UNKNOWN) < 0) {
         std::cerr << "Error compiling filter: " << pcap_geterr(handle) << std::endl;
-        return false;
+        return -2;
     }
 
     if (pcap_setfilter(handle, &fp) < 0) {
         pcap_freecode(&fp);
         std::cerr << "Error setting filter: " << pcap_geterr(handle) << std::endl;
-        return false;
+        return -3;
     }
 
     pcap_freecode(&fp);
     std::cout << "filter applied: " << filter << std::endl;
-    return true;
+    return 0;
 }
 
 bool Sniffer::savePacket(const std::string& filename, const struct pcap_pkthdr* header, const u_char* packet) {
@@ -231,3 +228,4 @@ bool Sniffer::openPacket(const std::string& filename, std::function<void(u_char*
     pcap_close(pcapFileHandle);
     return true;
 }
+

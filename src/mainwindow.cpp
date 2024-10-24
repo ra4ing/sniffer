@@ -410,8 +410,36 @@ void MainWindow::setupConnection() {
             return;
         }
 
-        std::cout << 111 << std::endl;
+        });
 
+    /* applyFilter */
+    connect(ui->applyFilterButton, &QPushButton::clicked, this, [this]() {
+        QString filterText = ui->filterInput->text();
+        if (filterText.isEmpty()) {
+            QMessageBox::information(this, "Filter", "Please input filter");
+            return;
+        }
+
+        int result = sniffer->applyFilter(filterText.toStdString());
+        if (result == -1) {
+            QMessageBox::critical(this, "Filter", "No devices opened");
+            return;
+        }
+        else if (result == -2) {
+            ui->filterInput->setStyleSheet("color: red;");
+            QMessageBox::warning(this, "Filter", "Error compiling filter");
+            return;
+        }
+        else if (result == -3) {
+            QMessageBox::critical(this, "Filter", "Error setting filter");
+            return;
+        }
+
+        if (ui->savedFilters->findText(filterText) == -1) {
+            ui->savedFilters->addItem(filterText);
+        }
+
+        ui->filterInput->setStyleSheet("color: black;");
         });
 }
 
@@ -446,17 +474,19 @@ void MainWindow::setupDeviceBar() {
 }
 
 void MainWindow::connectDeviceAction(pcap_if_t* dev) {
-    QAction* newAction = new QAction(QIcon(":resources/images/device.png"), dev->name, this);
-    newAction->setCheckable(true);
-    actionGroup->addAction(newAction);
-    deviceActions.push_back(newAction);
+    QAction* deviceAction = new QAction(QIcon(":resources/images/device.png"), dev->name, this);
+    deviceAction->setCheckable(true);
+    actionGroup->addAction(deviceAction);
+    deviceActions.push_back(deviceAction);
 
     QString toolTipText = dev->description ? QString("%1: %2").arg(dev->name).arg(dev->description)
         : QString("%1: ").arg(dev->name);
-    newAction->setToolTip(toolTipText);
+    deviceAction->setToolTip(toolTipText);
 
-    connect(newAction, &QAction::toggled, this, [&, dev, this](bool checked) {
+    connect(deviceAction, &QAction::toggled, this, [&, dev, this](bool checked) {
+        ui->filterInput->clear();
         if (checked) {
+            ui->filterInput->clear();
             if (!sniffer->setSniffer(dev->name)) {
                 stopCaptureAction->setEnabled(false);
                 startCaptureAction->setEnabled(false);

@@ -26,7 +26,7 @@ public:
         int to_ms_ = -1);
     void startCapture(std::function<void(u_char* user, const struct pcap_pkthdr* header, const u_char* packet)> packetHandler);                            // 开始捕获数据包
     void stopCapture();                             // 停止捕获
-    bool applyFilter(const std::string& filter);    // 应用数据包过滤规则
+    int applyFilter(const std::string& filter);    // 应用数据包过滤规则
     bool savePacket(const std::string& filename, const struct pcap_pkthdr* header, const u_char* packet);  // 保存捕获的数据包
     bool openPacket(const std::string& filename, std::function<void(u_char* user, const struct pcap_pkthdr* header, const u_char* packet)> packetHandler);
         
