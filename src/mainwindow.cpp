@@ -69,16 +69,19 @@ void MainWindow::setupAction() {
     actionGroup->addAction(closeDeviceAction);
     deviceActions.push_back(closeDeviceAction);
 
-    auto packetHandler = [this](u_char* user, const struct pcap_pkthdr* header, const u_char* packet) {
-        QMetaObject::invokeMethod(this, [this, &header, &packet]() {
-            ParsedPacket* parsedPacket = parser->parsePacket(header, packet);
-            headers.push_back(header);
-            packets.push_back(packet);
-            updatePacketList(parsedPacket, header);
-            updatePacketDetail(parsedPacket, header);
-            updateHexView(parsedPacket, header, packet);
+    packetHandler = [this](u_char* user, const struct pcap_pkthdr* header, const u_char* packet) {
+        const struct pcap_pkthdr headerCopy = *header;
+        const u_char* packetCopy = new u_char[header->caplen];
+        memcpy(const_cast<u_char*>(packetCopy), packet, header->caplen);
+
+        QMetaObject::invokeMethod(this, [this, headerCopy, packetCopy]() {
+            ParsedPacket* parsedPacket = parser->parsePacket(&headerCopy, packetCopy);
+            headers.push_back(new pcap_pkthdr(headerCopy));
+            packets.push_back(packetCopy);
+            updatePacketList(parsedPacket, &headerCopy);
+            updatePacketDetail(parsedPacket, &headerCopy);
+            updateHexView(parsedPacket, &headerCopy, packetCopy);
             }, Qt::QueuedConnection);
-        
         };
     captureThread = new CaptureThread(sniffer, packetHandler, this);
 }
@@ -132,9 +135,8 @@ void MainWindow::updatePacketList(ParsedPacket* parsedPacket, const struct pcap_
     ui->packetList->setItem(row, 4, new QTableWidgetItem(QString::number(header->caplen)));
     ui->packetList->setItem(row, 5, new QTableWidgetItem(info));
 
-    if (autoScrollEnabled) {
+    if (autoScrollEnabled)
         ui->packetList->scrollToBottom();
-    }
 }
 
 void MainWindow::updatePacketDetail(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
@@ -313,10 +315,10 @@ void MainWindow::setupConnection() {
 
     /* closeConnect */
     connect(closeDeviceAction, &QAction::triggered, this, [this]() {
+        sniffer->closeDev();
         stopCaptureAction->setEnabled(false);
         startCaptureAction->setEnabled(false);
         });
-
 
     /* startCapture */
     connect(startCaptureAction, &QAction::triggered, this, [this]() {
@@ -326,6 +328,8 @@ void MainWindow::setupConnection() {
             QMessageBox::critical(this, "Device", "Open Device Error");
             return;
         }
+
+        clearLastCapture();
 
         if (sniffer->isCapturing == 0)
             sniffer->isCapturing = -1;
@@ -343,9 +347,7 @@ void MainWindow::setupConnection() {
 
         startCaptureAction->setEnabled(false);
         stopCaptureAction->setEnabled(true);
-        clearLastCapture();
         });
-
 
     /* stopCapture */
     connect(stopCaptureAction, &QAction::triggered, this, [this]() {
@@ -356,7 +358,7 @@ void MainWindow::setupConnection() {
 
     /* packetList */
     connect(ui->packetList, &QTableWidget::itemSelectionChanged, this, [this]() {
-        int currentRow = ui->packetList->currentRow() - 1;
+        int currentRow = ui->packetList->currentRow();
         if (currentRow >= 0 && currentRow < ethernetItems.size()) {
             ui->packetDetails->clear();
             ui->packetDetails->addTopLevelItem(ethernetItems[currentRow]->clone());
@@ -368,7 +370,8 @@ void MainWindow::setupConnection() {
             currentHeader = headers[currentRow];
             currentPacket = packets[currentRow];
 
-            enableScrollingAction->triggered();
+            autoScrollEnabled = false;
+            enableScrollingAction->setText("Enable Auto Scroll");
         }
         });
 
@@ -386,11 +389,29 @@ void MainWindow::setupConnection() {
             return;
         }
 
-        QString fileName = QFileDialog::getSaveFileName(this, tr("Save Packet Capture"), "", tr("PCAP Files (*.pcap)"));
+        QString fileName = QFileDialog::getSaveFileName(this, tr("Save Packet"), "", tr("PCAP Files (*.pcap)"));
         if (fileName.isEmpty())
             return;
 
-        sniffer->saveCapture(fileName.toStdString(), currentHeader, currentPacket);
+        sniffer->savePacket(fileName.toStdString(), currentHeader, currentPacket);
+        });
+
+    /* openPacket */
+    connect(openPacketAction, &QAction::triggered, this, [this]() {
+        QString fileName = QFileDialog::getOpenFileName(this, tr("Open Packet"), "", tr("PCAP Files (*.pcap)"));
+        if (fileName.isEmpty())
+            return;
+
+        closeDeviceAction->triggered();
+        clearLastCapture();
+
+        if (sniffer->openPacket(fileName.toStdString(), packetHandler) == false) {
+            QMessageBox::critical(this, "Failed open", "Open Packet failed");
+            return;
+        }
+
+        std::cout << 111 << std::endl;
+
         });
 }
 

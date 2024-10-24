@@ -97,13 +97,11 @@ bool Sniffer::openDev() {
 }
 
 void Sniffer::closeDev() {
-    if (handle == nullptr) {
-        std::cout << "Device has been closed" << std::endl;
-        return;
-    }
-
-    if (isCapturing == 1) {
+    if (isCapturing == 1)
         stopCapture();
+
+    if (handle == nullptr) {
+        return;
     }
 
     pcap_close(handle);
@@ -150,12 +148,10 @@ void Sniffer::startCapture(std::function<void(u_char* user, const struct pcap_pk
 
 void Sniffer::stopCapture() {
     if (handle == nullptr) {
-        std::cerr << "Device is not openned" << std::endl;
         return;
     }
 
     if (isCapturing == 0) {
-        std::cerr << "Device is not capturing" << std::endl;
         return;
     }
 
@@ -188,7 +184,7 @@ bool Sniffer::applyFilter(const std::string& filter) {
     return true;
 }
 
-bool Sniffer::saveCapture(const std::string& filename, const struct pcap_pkthdr* header, const u_char* packet) {
+bool Sniffer::savePacket(const std::string& filename, const struct pcap_pkthdr* header, const u_char* packet) {
     if (handle == nullptr) {
         std::cerr << "No devices monitored" << std::endl;
         return false;
@@ -204,5 +200,34 @@ bool Sniffer::saveCapture(const std::string& filename, const struct pcap_pkthdr*
     pcap_dump(reinterpret_cast<u_char*>(dumpfile), header, packet);
     pcap_dump_close(dumpfile);
     std::cout << "packet saved:" << filename << std::endl;
+    return true;
+}
+
+bool Sniffer::openPacket(const std::string& filename, std::function<void(u_char* user, const struct pcap_pkthdr* header, const u_char* packet)> packetHandler) {
+    if (packetHandler == nullptr) {
+        std::cerr << "startCapture: Callback function not setted" << std::endl;
+        return false;
+    }
+
+    if (isCapturing == 1)
+        stopCapture();
+
+    if (handle != nullptr)
+        closeDev();
+
+    pcap_t* pcapFileHandle = pcap_open_offline(filename.c_str(), errBuf);
+    if (pcapFileHandle == nullptr) {
+        std::cerr << "openDev: Error opening device: " << errBuf << std::endl;
+        return false;
+    }
+    gettimeofday(&startTime, nullptr);
+
+    handlerFunction = &packetHandler;
+    if (pcap_loop(pcapFileHandle, 0, pcapCallback, nullptr) == -1) {
+        std::cerr << "Error reading packet: " << pcap_geterr(pcapFileHandle) << std::endl;
+        pcap_close(pcapFileHandle);
+        return false;
+    }
+    pcap_close(pcapFileHandle);
     return true;
 }

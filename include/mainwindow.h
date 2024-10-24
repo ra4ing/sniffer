@@ -20,7 +20,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = nullptr);
+    MainWindow(QWidget* parent = nullptr);
     ~MainWindow();
 
     std::shared_ptr<Sniffer> sniffer;
@@ -51,6 +51,7 @@ private:
     std::shared_ptr<QActionGroup> actionGroup;
 
     CaptureThread* captureThread;
+    std::function<void(u_char* user, const struct pcap_pkthdr* header, const u_char* packet)> packetHandler;
 
     std::vector<QTreeWidgetItem*> ethernetItems;
     std::vector<QString> hexViews;
@@ -61,13 +62,11 @@ private:
 
     bool autoScrollEnabled;
 
-
     void setupPacketList();
     void setupAction();
     void setupMenu();
     void setupToolBar();
     void setupDeviceBar();
-
     void setupConnection();
 
     void connectDeviceAction(pcap_if_t* dev);
