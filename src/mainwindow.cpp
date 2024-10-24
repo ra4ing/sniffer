@@ -1,7 +1,7 @@
 #include "mainwindow.h"
 #include "forms/ui_mainwindow.h"
-#include "sniffer.h"
 #include <QMessageBox>
+#include <QFileDialog>
 #include <iostream>
 #include <thread>
 
@@ -26,7 +26,11 @@ MainWindow::MainWindow(QWidget* parent)
 }
 
 MainWindow::~MainWindow() {
-    sniffer->stopCapture();
+    if (captureThread->isRunning()) {
+        sniffer->stopCapture();
+        captureThread->quit();
+        captureThread->wait();
+    }
     sniffer->closeDev();
     for (auto ethernetItem : ethernetItems)
         delete ethernetItem;
@@ -55,7 +59,7 @@ void MainWindow::setupAction() {
 
     openPacketAction = createAction(":resources/images/open_packet.png", "Open Packet");
     savePacketAction = createAction(":resources/images/save_packet.png", "Save Packet");
-    enableScrollingAction = createAction(":resources/images/enable_scrolling.png", "Enable Scrolling");
+    enableScrollingAction = createAction(":resources/images/enable_scrolling.png", "Disable Auto Scroll");
     exitAction = createAction(":resources/images/exit.png", "Exit");
     searchDeviceAction = createAction(":resources/images/search_device.png", "Search Device");
 
@@ -64,6 +68,19 @@ void MainWindow::setupAction() {
     closeDeviceAction->setChecked(true);
     actionGroup->addAction(closeDeviceAction);
     deviceActions.push_back(closeDeviceAction);
+
+    auto packetHandler = [this](u_char* user, const struct pcap_pkthdr* header, const u_char* packet) {
+        QMetaObject::invokeMethod(this, [this, &header, &packet]() {
+            ParsedPacket* parsedPacket = parser->parsePacket(header, packet);
+            headers.push_back(header);
+            packets.push_back(packet);
+            updatePacketList(parsedPacket, header);
+            updatePacketDetail(parsedPacket, header);
+            updateHexView(parsedPacket, header, packet);
+            }, Qt::QueuedConnection);
+        
+        };
+    captureThread = new CaptureThread(sniffer, packetHandler, this);
 }
 
 void MainWindow::updatePacketList(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
@@ -114,6 +131,10 @@ void MainWindow::updatePacketList(ParsedPacket* parsedPacket, const struct pcap_
     ui->packetList->setItem(row, 3, new QTableWidgetItem(protocol));
     ui->packetList->setItem(row, 4, new QTableWidgetItem(QString::number(header->caplen)));
     ui->packetList->setItem(row, 5, new QTableWidgetItem(info));
+
+    if (autoScrollEnabled) {
+        ui->packetList->scrollToBottom();
+    }
 }
 
 void MainWindow::updatePacketDetail(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
@@ -232,20 +253,33 @@ void MainWindow::updateHexView(ParsedPacket* parsedPacket, const struct pcap_pkt
                 hexOutput.append(QString("%1 ").arg(packet[i + j], 2, 16, QChar('0')).toUpper());
 
                 char ch = static_cast<char>(packet[i + j]);
-                if (isprint(ch)) {
+                if (isprint(ch))
                     asciiOutput.append(ch);
-                } else {
+                else
                     asciiOutput.append('.');
-                }
-            } else {
-                hexOutput.append("   ");
             }
+            else
+                hexOutput.append("   ");
         }
 
         combinedOutput.append(hexOutput + "  " + asciiOutput + "\n");
         hexOutput.clear();
     }
     hexViews.push_back(combinedOutput);
+}
+
+void MainWindow::clearLastCapture() {
+    ui->packetList->clearContents();
+    ui->packetList->setRowCount(0);
+
+    for (auto ethernetItem : ethernetItems)
+        delete ethernetItem;
+    ethernetItems.clear();
+
+    headers.clear();
+    packets.clear();
+    currentHeader = nullptr;
+    currentPacket = nullptr;
 }
 
 void MainWindow::setupConnection() {
@@ -283,16 +317,9 @@ void MainWindow::setupConnection() {
         startCaptureAction->setEnabled(false);
         });
 
-    auto packetHandler = [this](u_char* user, const struct pcap_pkthdr* header, const u_char* packet) {
-        ParsedPacket* parsedPacket = parser->parsePacket(header, packet);
-
-        updatePacketList(parsedPacket, header);
-        updatePacketDetail(parsedPacket, header);
-        updateHexView(parsedPacket, header, packet);
-        };
 
     /* startCapture */
-    connect(startCaptureAction, &QAction::triggered, this, [this, packetHandler]() {
+    connect(startCaptureAction, &QAction::triggered, this, [this]() {
         if (!sniffer->openDev()) {
             startCaptureAction->setEnabled(false);
             stopCaptureAction->setEnabled(false);
@@ -300,21 +327,14 @@ void MainWindow::setupConnection() {
             return;
         }
 
-        std::thread captureThread([this, packetHandler]() {
-            sniffer->startCapture(packetHandler);
-            });
-        captureThread.detach();
+        if (sniffer->isCapturing == 0)
+            sniffer->isCapturing = -1;
 
-        const int maxRetries = 10;  // 最大重试次数
-        const int waitDuration = 100;  // 每次等待100ms
-        int retries = 0;
+        captureThread->start();
 
-        while (!sniffer->isCapturing && retries < maxRetries) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(waitDuration));
-            retries++;
-        }
+        while (sniffer->isCapturing == -1) {}
 
-        if (!sniffer->isCapturing) {
+        if (sniffer->isCapturing == 0) {
             startCaptureAction->setEnabled(true);
             stopCaptureAction->setEnabled(false);
             QMessageBox::critical(this, "Capture", "Capture start Error");
@@ -323,11 +343,7 @@ void MainWindow::setupConnection() {
 
         startCaptureAction->setEnabled(false);
         stopCaptureAction->setEnabled(true);
-        ui->packetList->clearContents();
-        ui->packetList->setRowCount(0);
-        for (auto ethernetItem : ethernetItems)
-            delete ethernetItem;
-        ethernetItems.clear();
+        clearLastCapture();
         });
 
 
@@ -345,13 +361,36 @@ void MainWindow::setupConnection() {
             ui->packetDetails->clear();
             ui->packetDetails->addTopLevelItem(ethernetItems[currentRow]->clone());
             ui->packetDetails->expandAll();
-        }
 
-        if (currentRow >= 0 && currentRow < hexViews.size()) {
             ui->hexView->clear();
             ui->hexView->setPlainText(hexViews[currentRow]);
+
+            currentHeader = headers[currentRow];
+            currentPacket = packets[currentRow];
+
+            enableScrollingAction->triggered();
         }
-        
+        });
+
+    /* scrolling */
+    autoScrollEnabled = true;
+    connect(enableScrollingAction, &QAction::triggered, this, [this]() {
+        autoScrollEnabled = !autoScrollEnabled;
+        enableScrollingAction->setText(autoScrollEnabled ? "Disable Auto Scroll" : "Enable Auto Scroll");
+        });
+
+    /* savePacket */
+    connect(savePacketAction, &QAction::triggered, this, [this]() {
+        if (currentHeader == nullptr || currentPacket == nullptr) {
+            QMessageBox::information(this, "Failed save", "No packet selected");
+            return;
+        }
+
+        QString fileName = QFileDialog::getSaveFileName(this, tr("Save Packet Capture"), "", tr("PCAP Files (*.pcap)"));
+        if (fileName.isEmpty())
+            return;
+
+        sniffer->saveCapture(fileName.toStdString(), currentHeader, currentPacket);
         });
 }
 

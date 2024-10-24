@@ -32,9 +32,6 @@ set(PROJECT_SOURCES
         ${source_files}
         ${header_files}
         ${forms_files}
-        # ${SOURCE_DIR}/mainwindow.cpp
-        # ${HEADER_DIR}/mainwindow.h
-        # ${FORMS_DIR}/mainwindow.ui
         ${TS_FILES}
 )
 

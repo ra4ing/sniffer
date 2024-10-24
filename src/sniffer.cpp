@@ -21,11 +21,11 @@ Sniffer::Sniffer(int snaplen_, int promisc_, int to_ms_) {
     to_ms = to_ms_;
     allDevs = nullptr;
     handle = nullptr;
-    isCapturing = false;
+    isCapturing = 0;
 }
 
 Sniffer::~Sniffer() {
-    if (isCapturing) stopCapture();
+    if (isCapturing == 1) stopCapture();
     if (handle != nullptr) closeDev();
     if (allDevs != nullptr) pcap_freealldevs(allDevs);
 }
@@ -91,18 +91,18 @@ bool Sniffer::openDev() {
         return false;
     }
 
-    isCapturing = false;
+    isCapturing = 0;
     std::cout << "opened: " << devName << std::endl;
     return true;
 }
 
 void Sniffer::closeDev() {
     if (handle == nullptr) {
-        std::cerr << "Device has been closed" << std::endl;
+        std::cout << "Device has been closed" << std::endl;
         return;
     }
 
-    if (isCapturing) {
+    if (isCapturing == 1) {
         stopCapture();
     }
 
@@ -119,20 +119,22 @@ static void pcapCallback(u_char* user, const struct pcap_pkthdr* header, const u
 
 void Sniffer::startCapture(std::function<void(u_char* user, const struct pcap_pkthdr* header, const u_char* packet)> packetHandler) {
     if (handle == nullptr) {
+        isCapturing = 0;
         std::cerr << "startCapture: Device has not opened" << std::endl;
         return;
     }
 
-    if (isCapturing) {
+    if (isCapturing == 1) {
         std::cerr << "startCapture: Device is monitoring" << std::endl;
         return;
     }
 
     if (packetHandler == nullptr) {
+        isCapturing = 0;
         std::cerr << "startCapture: Callback function not setted" << std::endl;
         return;
     }
-    isCapturing = true;
+    isCapturing = 1;
 
     gettimeofday(&startTime, nullptr);
 
@@ -142,7 +144,7 @@ void Sniffer::startCapture(std::function<void(u_char* user, const struct pcap_pk
 
     pcap_loop(handle, 0, pcapCallback, nullptr);
 
-    isCapturing = false;
+    isCapturing = 0;
     return;
 }
 
@@ -152,13 +154,13 @@ void Sniffer::stopCapture() {
         return;
     }
 
-    if (!isCapturing) {
+    if (isCapturing == 0) {
         std::cerr << "Device is not capturing" << std::endl;
         return;
     }
 
     pcap_breakloop(handle);
-    isCapturing = false;
+    isCapturing = 0;
     std::cout << "stop capture: " << devName << std::endl;
     return;
 }

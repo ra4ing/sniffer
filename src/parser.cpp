@@ -33,11 +33,9 @@ ParsedPacket* PacketParser::parsePacket(const struct pcap_pkthdr* header, const 
 void PacketParser::parseEthernetHeader(const u_char* packet, ParsedPacket* parsedPacket) {
     struct ether_header* ethernetHeader = (struct ether_header*)packet;
 
-    // 解析源和目的 MAC 地址
     parsedPacket->srcMAC = ether_ntoa((struct ether_addr*)ethernetHeader->ether_shost);
     parsedPacket->destMAC = ether_ntoa((struct ether_addr*)ethernetHeader->ether_dhost);
 
-    // 解析以太类型字段
     parsedPacket->etherType = ntohs(ethernetHeader->ether_type);
 }
 

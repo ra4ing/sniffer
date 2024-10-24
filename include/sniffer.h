@@ -14,7 +14,7 @@ public:
     ~Sniffer();
 
     timeval startTime;
-    bool isCapturing;
+    int isCapturing;
 
     pcap_if_t* getDevs();                           // 获取设备列表
     bool openDev();                                 // 打开设备

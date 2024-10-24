@@ -3,6 +3,7 @@
 
 #include "sniffer.h"
 #include "parser.h"
+#include "captureThread.h"
 #include <QMainWindow>
 #include <QActionGroup>
 #include <QTreeWidgetItem>
@@ -21,6 +22,9 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+
+    std::shared_ptr<Sniffer> sniffer;
+    std::shared_ptr<PacketParser> parser;
 
 private:
     Ui::MainWindow* ui;
@@ -46,11 +50,17 @@ private:
     QList<QAction*> deviceActions;
     std::shared_ptr<QActionGroup> actionGroup;
 
-    std::shared_ptr<Sniffer> sniffer;
-    std::shared_ptr<PacketParser> parser;
+    CaptureThread* captureThread;
 
     std::vector<QTreeWidgetItem*> ethernetItems;
     std::vector<QString> hexViews;
+    std::vector<const pcap_pkthdr*> headers;
+    std::vector<const u_char*> packets;
+    const pcap_pkthdr* currentHeader;
+    const u_char* currentPacket;
+
+    bool autoScrollEnabled;
+
 
     void setupPacketList();
     void setupAction();
@@ -65,5 +75,7 @@ private:
     void updatePacketList(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header);
     void updatePacketDetail(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header);
     void updateHexView(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header, const u_char* packet);
+
+    void clearLastCapture();
 };
 #endif // MAINWINDOW_H
