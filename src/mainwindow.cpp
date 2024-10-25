@@ -171,7 +171,7 @@ void MainWindow::updatePacketLists(ParsedPacket* parsedPacket, const struct pcap
 
 void MainWindow::updatePacketDetails(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
     QTreeWidgetItem* ethernetItem = new QTreeWidgetItem();
-    ethernetItem->setText(0, "Ethernet II");
+    ethernetItem->setText(0, "Ethernet");
 
     // Ethernet
     QString srcMAC = QString("Source MAC: %1").arg(QString::fromStdString(parsedPacket->srcMAC));
@@ -223,6 +223,19 @@ void MainWindow::updatePacketDetails(ParsedPacket* parsedPacket, const struct pc
             tcpItem->addChild(new QTreeWidgetItem(QStringList() << ackNumber));
             tcpItem->addChild(new QTreeWidgetItem(QStringList() << tcpFlags));
             tcpItem->addChild(new QTreeWidgetItem(QStringList() << windowSize));
+
+            if (parsedPacket->srcPort == "80" || parsedPacket->destPort == "80") {
+                QTreeWidgetItem* httpItem = new QTreeWidgetItem(tcpItem);
+                httpItem->setText(0, "HTTP");
+                tcpItem->addChild(new QTreeWidgetItem(QStringList() << QString::fromStdString(parsedPacket->payload)));
+            }
+            else if (parsedPacket->srcPort == "443" || parsedPacket->destPort == "443") {
+                QTreeWidgetItem* httpsItem = new QTreeWidgetItem(tcpItem);
+                httpsItem->setText(0, "HTTPS");
+                httpsItem->addChild(new QTreeWidgetItem(QStringList() << QString::fromStdString(parsedPacket->payload)));
+            }
+                
+
         }
         else if (parsedPacket->protocol == IPPROTO_UDP) {
             QTreeWidgetItem* udpItem = new QTreeWidgetItem(ipItem);
@@ -233,6 +246,12 @@ void MainWindow::updatePacketDetails(ParsedPacket* parsedPacket, const struct pc
 
             udpItem->addChild(new QTreeWidgetItem(QStringList() << srcPort));
             udpItem->addChild(new QTreeWidgetItem(QStringList() << dstPort));
+
+            if (parsedPacket->srcPort == "53" || parsedPacket->destPort == "53") {
+                QTreeWidgetItem* dnsItem = new QTreeWidgetItem(udpItem);
+                dnsItem->setText(0, "DNS");
+                dnsItem->addChild(new QTreeWidgetItem(QStringList() << QString::fromStdString(parsedPacket->payload)));
+            }
         }
         else if (parsedPacket->protocol == IPPROTO_ICMP) {
             QTreeWidgetItem* icmpItem = new QTreeWidgetItem(ipItem);
