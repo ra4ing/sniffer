@@ -38,7 +38,6 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::setupPacketList() {
-    // ui->packetList->setSelectionMode(QAbstractItemView::MultiSelection);
     ui->packetList->setColumnWidth(0, 100);  // Time
     ui->packetList->setColumnWidth(1, 150);  // Source
     ui->packetList->setColumnWidth(2, 150);  // Destination
@@ -60,6 +59,7 @@ void MainWindow::setupAction() {
 
     openPacketAction = createAction(":resources/images/open_packet.png", "Open Packet");
     savePacketAction = createAction(":resources/images/save_packet.png", "Save Packet");
+    saveAllPacketsAction = createAction(":resources/images/save_packet.png", "Save All Packets");
     enableScrollingAction = createAction(":resources/images/enable_scrolling.png", "Disable Auto Scroll");
     exitAction = createAction(":resources/images/exit.png", "Exit");
     searchDeviceAction = createAction(":resources/images/search_device.png", "Search Device");
@@ -122,8 +122,11 @@ void MainWindow::updatePacketLists(ParsedPacket* parsedPacket, const struct pcap
     }
 
     timeval packetTime = header->ts;
-    long secondsStart = sniffer->startTime.tv_sec;
-    long microsecondsStart = sniffer->startTime.tv_usec;
+    if (startTime.tv_sec == 0 && startTime.tv_usec == 0)
+        startTime = packetTime;
+    
+    long secondsStart = startTime.tv_sec;
+    long microsecondsStart = startTime.tv_usec;
     long secondsElapsed = packetTime.tv_sec - secondsStart;
     long microsecondsElapsed = packetTime.tv_usec - microsecondsStart;
     double totalTimeElapsed = secondsElapsed + (microsecondsElapsed / 1000000.0);
@@ -310,6 +313,7 @@ void MainWindow::clearLastCapture() {
     packets.clear();
     currentHeader = nullptr;
     currentPacket = nullptr;
+    startTime = { 0, 0 };
 }
 
 void MainWindow::setupConnection() {
@@ -421,7 +425,28 @@ void MainWindow::setupConnection() {
         if (fileName.isEmpty())
             return;
 
-        sniffer->savePacket(fileName.toStdString(), currentHeader, currentPacket);
+        if (sniffer->savePacket(fileName.toStdString(), currentHeader, currentPacket) == -1) {
+            QMessageBox::critical(this, "Failed save", "Save packets error");
+            return;
+        }
+        });
+
+    /* saveAllPackets */
+    connect(saveAllPacketsAction, &QAction::triggered, this, [this]() {
+        if (headers.empty() || packets.empty()) {
+            QMessageBox::information(this, "Failed save", "No packets");
+            return;
+        }
+
+        QString fileName = QFileDialog::getSaveFileName(this, tr("Save All Packets"), "", tr("PCAP Files (*.pcap)"));
+        if (fileName.isEmpty())
+            return;
+
+        
+        if (sniffer->saveAllPackets(fileName.toStdString(), headers, packets) == -1) {
+            QMessageBox::critical(this, "Failed save", "Save packets error");
+            return;
+        }
         });
 
     /* openPacket */
@@ -430,7 +455,7 @@ void MainWindow::setupConnection() {
         if (fileName.isEmpty())
             return;
 
-        closeDeviceAction->triggered();
+        closeDeviceAction->trigger();
         clearLastCapture();
 
         if (sniffer->openPacket(fileName.toStdString(), packetHandler) == false) {
@@ -443,10 +468,6 @@ void MainWindow::setupConnection() {
     /* applyFilter */
     connect(ui->applyFilterButton, &QPushButton::clicked, this, [this]() {
         QString filterText = ui->filterInput->text();
-        // if (filterText.isEmpty()) {
-        //     QMessageBox::information(this, "Filter", "Please input filter");
-        //     return;
-        // }
 
         int result = sniffer->applyFilter(filterText.toStdString());
         if (result == -1) {
@@ -472,10 +493,6 @@ void MainWindow::setupConnection() {
     /* afterApplyFilter */
     connect(ui->afterApplyFilterButton, &QPushButton::clicked, this, [this]() {
         QString filterText = ui->afterFilterInput->text();
-        // if (filterText.isEmpty()) {
-        //     QMessageBox::information(this, "Filter", "Please input filter");
-        //     return;
-        // }
 
         filteredIndex.clear();
         packetListIndex = 0;
@@ -530,6 +547,7 @@ void MainWindow::setupToolBar() {
     ui->toolBar->addAction(stopCaptureAction);
     ui->toolBar->addAction(openPacketAction);
     ui->toolBar->addAction(savePacketAction);
+    ui->toolBar->addAction(saveAllPacketsAction);
     ui->toolBar->addAction(enableScrollingAction);
 }
 

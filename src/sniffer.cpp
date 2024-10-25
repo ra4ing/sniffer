@@ -131,7 +131,7 @@ void Sniffer::startCapture(std::function<void(u_char* user, const struct pcap_pk
     }
     isCapturing = 1;
 
-    gettimeofday(&startTime, nullptr);
+    // gettimeofday(&startTime, nullptr);
 
     handlerFunction = &packetHandler;
 
@@ -210,7 +210,12 @@ int Sniffer::filterCapturedPackets(const std::string& filter,
     return true;
 }
 
-bool Sniffer::savePacket(const std::string& filename, const struct pcap_pkthdr* header, const u_char* packet) {
+int Sniffer::savePacket(const std::string& filename, const struct pcap_pkthdr* header, const u_char* packet) {
+    if (header == nullptr || packet == nullptr) {
+        std::cerr << "Header or Packet can't be nullptr" << std::endl;
+        return -1;
+    }
+
     pcap_t* tempHandle = nullptr;
     if (handle == nullptr) {
 
@@ -218,7 +223,7 @@ bool Sniffer::savePacket(const std::string& filename, const struct pcap_pkthdr* 
         tempHandle = pcap_open_dead(DLT_EN10MB, 65535);
         if (tempHandle == nullptr) {
             std::cerr << "Error creating offline pcap handle" << std::endl;
-            return false;
+            return -1;
         }
     }
 
@@ -231,7 +236,7 @@ bool Sniffer::savePacket(const std::string& filename, const struct pcap_pkthdr* 
 
         if (tempHandle != nullptr)
             pcap_close(tempHandle);
-        return false;
+        return -1;
     }
 
     pcap_dump(reinterpret_cast<u_char*>(dumpfile), header, packet);
@@ -240,7 +245,49 @@ bool Sniffer::savePacket(const std::string& filename, const struct pcap_pkthdr* 
         pcap_close(tempHandle);
     
     std::cout << "packet saved:" << filename << std::endl;
-    return true;
+    return 0;
+}
+
+int Sniffer::saveAllPackets(
+    const std::string& filename,
+    const std::vector<const pcap_pkthdr*>& headers,
+    const std::vector<const u_char*>& packets) {
+
+    if (headers.size() != packets.size()) {
+        std::cerr << "Headers and packets vectors must be the same size." << std::endl;
+        return -1;
+    }
+
+    pcap_t* tempHandle = nullptr;
+    if (handle == nullptr) {
+        char errbuf[PCAP_ERRBUF_SIZE];
+        tempHandle = pcap_open_dead(DLT_EN10MB, 65535);
+        if (tempHandle == nullptr) {
+            std::cerr << "Error creating offline pcap handle" << std::endl;
+            return -1;
+        }
+    }
+
+    pcap_t* activeHandle = (handle != nullptr) ? handle : tempHandle;
+    pcap_dumper_t* dumpfile = pcap_dump_open(activeHandle, filename.c_str());
+    if (dumpfile == nullptr) {
+        std::cerr << "Error opening dump file: " << pcap_geterr(activeHandle) << std::endl;
+        if (tempHandle != nullptr)
+            pcap_close(tempHandle);
+        return -1;
+    }
+
+    for (size_t i = 0; i < headers.size(); ++i) {
+        pcap_dump(reinterpret_cast<u_char*>(dumpfile), headers[i], packets[i]);
+    }
+
+    pcap_dump_close(dumpfile);
+    if (tempHandle != nullptr)
+        pcap_close(tempHandle);
+
+    std::cout << "All packets saved to: " << filename << std::endl;
+    return 0;
+
 }
 
 bool Sniffer::openPacket(const std::string& filename, std::function<void(u_char* user, const struct pcap_pkthdr* header, const u_char* packet)> packetHandler) {
@@ -260,7 +307,7 @@ bool Sniffer::openPacket(const std::string& filename, std::function<void(u_char*
         std::cerr << "openDev: Error opening device: " << errBuf << std::endl;
         return false;
     }
-    gettimeofday(&startTime, nullptr);
+    // gettimeofday(&startTime, nullptr);
 
     handlerFunction = &packetHandler;
     if (pcap_loop(pcapFileHandle, 0, pcapCallback, nullptr) == -1) {

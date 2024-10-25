@@ -54,6 +54,7 @@ private:
     QAction* stopCaptureAction;
     QAction* openPacketAction;
     QAction* savePacketAction;
+    QAction* saveAllPacketsAction;
     QAction* enableScrollingAction;
     QAction* exitAction;
 
@@ -66,6 +67,7 @@ private:
     CaptureThread* captureThread;
     std::function<void(u_char* user, const struct pcap_pkthdr* header, const u_char* packet)> packetHandler;
 
+    timeval startTime;
     std::vector<PacketListData*> packetLists;
     std::vector<QTreeWidgetItem*> ethernetItems;
     std::vector<QString> hexViews;
@@ -88,7 +90,7 @@ private:
     void setupConnection();
 
     void connectDeviceAction(pcap_if_t* dev);
-
+ 
     void updatePacketLists(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header);
     void updatePacketDetails(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header);
     void updateHexViews(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header, const u_char* packet);
