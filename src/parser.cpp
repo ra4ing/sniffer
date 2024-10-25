@@ -2,6 +2,43 @@
 #include <iostream>
 #include <regex>
 
+// Definitions of ICMP code description maps
+std::map<uint8_t, std::string> icmpCodeDestUnreachable = {
+    {0, "Network Unreachable"},
+    {1, "Host Unreachable"},
+    {2, "Protocol Unreachable"},
+    {3, "Port Unreachable"},
+    {4, "Fragmentation Needed and DF set"},
+    {5, "Source Route Failed"}
+};
+
+std::map<uint8_t, std::string> icmpCodeTimeExceeded = {
+    {0, "TTL Expired in Transit"},
+    {1, "Fragment Reassembly Time Exceeded"}
+};
+
+std::map<uint8_t, std::string> icmpCodeRedirect = {
+    {0, "Redirect Datagram for the Network"},
+    {1, "Redirect Datagram for the Host"},
+    {2, "Redirect Datagram for the Type of Service and Network"},
+    {3, "Redirect Datagram for the Type of Service and Host"}
+};
+
+std::map<uint8_t, std::string> icmpCodeParamProblem = {
+    {0, "Pointer Indicates the Error"},
+    {1, "Missing a Required Option"},
+    {2, "Bad Length"}
+};
+
+std::map<uint8_t, std::string> icmpTypeDescriptions = {
+    {0, "Echo Reply"},
+    {3, "Destination Unreachable"},
+    {5, "Redirect"},
+    {8, "Echo Request"},
+    {11, "Time Exceeded"},
+    {12, "Parameter Problem"}
+};
+
 PacketParser::PacketParser() {}
 
 ParsedPacket* PacketParser::parsePacket(const struct pcap_pkthdr* header, const u_char* packet) {
@@ -125,29 +162,12 @@ void PacketParser::parseHTTP(const u_char* packet, ParsedPacket* parsedPacket) {
     // 将负载转换为字符串
     std::string httpData(reinterpret_cast<const char*>(payload), payloadSize);
 
-    // 检查是否为 HTTP 请求或响应
-    if (std::regex_search(httpData, std::regex(R"(^GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH)"))) {
-        // 解析 HTTP 请求
+    if (std::regex_search(httpData, std::regex(R"(^\s*(GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH)\s)")))
         parsedPacket->payload = "HTTP Request: " + httpData;
-        // std::istringstream stream(httpData);
-        // std::string method, url, version;
-        // stream >> method >> url >> version;
-        
-        // std::cout << "HTTP Request - Method: " << method << ", URL: " << url << ", Version: " << version << std::endl;
-    } 
-    else if (std::regex_search(httpData, std::regex(R"(^HTTP/\d\.\d \d{3})"))) {
-        // 解析 HTTP 响应
+    else if (std::regex_search(httpData, std::regex(R"(^\s*HTTP/\d\.\d\s+\d{3}\s)")))
         parsedPacket->payload = "HTTP Response: " + httpData;
-        // std::istringstream stream(httpData);
-        // std::string version, statusCode, statusMessage;
-        // stream >> version >> statusCode;
-        // std::getline(stream, statusMessage);
-        
-        // std::cout << "HTTP Response - Version: " << version << ", Status Code: " << statusCode 
-        //           << ", Status Message: " << statusMessage << std::endl;
-    } else {
+    else
         parsedPacket->payload = "Unknown HTTP Content";
-    }
 }
 
 void PacketParser::parseHTTPS(const u_char* packet, ParsedPacket* parsedPacket) {
@@ -160,11 +180,8 @@ void PacketParser::parseHTTPS(const u_char* packet, ParsedPacket* parsedPacket) 
         // 进一步检查握手协议版本（如 TLS 1.0/1.2/1.3）
         uint16_t version = (payload[1] << 8) | payload[2];
         parsedPacket->payload = "Detected TLS Handshake, Version: " + std::to_string(version);
-
-        // std::cout << "TLS Handshake Detected - Version: " << std::hex << version << std::endl;
-    } else {
+    } else
         parsedPacket->payload = "Encrypted HTTPS Content";
-    }
 }
 
 void PacketParser::parseUDPHeader(const u_char* packet, ParsedPacket* parsedPacket) {

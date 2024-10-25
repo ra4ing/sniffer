@@ -69,7 +69,7 @@ void MainWindow::setupAction() {
     closeDeviceAction->setChecked(true);
     actionGroup->addAction(closeDeviceAction);
     deviceActions.push_back(closeDeviceAction);
-    
+
     packetListIndex = 0;
     packetHandler = [this](u_char* user, const struct pcap_pkthdr* header, const u_char* packet) {
         const struct pcap_pkthdr headerCopy = *header;
@@ -85,7 +85,7 @@ void MainWindow::setupAction() {
             updateHexViews(parsedPacket, &headerCopy, packetCopy);
 
             pushPacketList(packetListIndex++);
-            
+
             }, Qt::QueuedConnection);
         };
     captureThread = new CaptureThread(sniffer, packetHandler, this);
@@ -109,12 +109,12 @@ void MainWindow::pushPacketList(int idx) {
 void MainWindow::updatePacketLists(ParsedPacket* parsedPacket, const struct pcap_pkthdr* header) {
     if (parsedPacket == nullptr) {
         PacketListData* rowData = new PacketListData(
-        new QTableWidgetItem(""),
-        new QTableWidgetItem(""),
-        new QTableWidgetItem(""),
-        new QTableWidgetItem(""),
-        new QTableWidgetItem(""),
-        new QTableWidgetItem("Packet Error: header or packet")
+            new QTableWidgetItem(""),
+            new QTableWidgetItem(""),
+            new QTableWidgetItem(""),
+            new QTableWidgetItem(""),
+            new QTableWidgetItem(""),
+            new QTableWidgetItem("Packet Error: header or packet")
         );
 
         packetLists.push_back(rowData);
@@ -124,7 +124,7 @@ void MainWindow::updatePacketLists(ParsedPacket* parsedPacket, const struct pcap
     timeval packetTime = header->ts;
     if (startTime.tv_sec == 0 && startTime.tv_usec == 0)
         startTime = packetTime;
-    
+
     long secondsStart = startTime.tv_sec;
     long microsecondsStart = startTime.tv_usec;
     long secondsElapsed = packetTime.tv_sec - secondsStart;
@@ -133,27 +133,71 @@ void MainWindow::updatePacketLists(ParsedPacket* parsedPacket, const struct pcap
     QString formattedTime = QString::number(totalTimeElapsed, 'f', 6);
 
     QString source, destination, protocol, info;
-    if (parsedPacket->protocol == IPPROTO_TCP) {
-        source = QString::fromStdString(parsedPacket->srcIP);
-        destination = QString::fromStdString(parsedPacket->destIP);
-        protocol = "TCP";
-        info = QString("Src Port: %1, Dst Port: %2, Flags: 0x%3")
-            .arg(QString::fromStdString(parsedPacket->srcPort))
-            .arg(QString::fromStdString(parsedPacket->destPort))
-            .arg(QString::number(parsedPacket->tcpFlags, 16));  // TCP flags in hex
+
+    if (parsedPacket->etherType == ETHERTYPE_IP) {
+        source = QString::fromStdString(parsedPacket->srcMAC);
+        destination = QString::fromStdString(parsedPacket->destMAC);
+        protocol = "IP";
+        info = QString("IP Version: %1, TTL: %2, Total Length: %3")
+            .arg(parsedPacket->ipVersion)
+            .arg(parsedPacket->ttl)
+            .arg(parsedPacket->totalLength);
+
+        if (parsedPacket->protocol == IPPROTO_TCP) {
+            source = QString::fromStdString(parsedPacket->srcIP);
+            destination = QString::fromStdString(parsedPacket->destIP);
+            protocol = "TCP";
+            info = QString("Src Port: %1, Dst Port: %2")
+                .arg(QString::fromStdString(parsedPacket->srcPort))
+                .arg(QString::fromStdString(parsedPacket->destPort));
+
+            if (parsedPacket->srcPort == "80" || parsedPacket->destPort == "80")
+                info += ", HTTP Packet";
+            else if (parsedPacket->srcPort == "443" || parsedPacket->destPort == "443")
+                info += ", HTTPS Packet";
+        }
+        else if (parsedPacket->protocol == IPPROTO_UDP) {
+            source = QString::fromStdString(parsedPacket->srcIP);
+            destination = QString::fromStdString(parsedPacket->destIP);
+            protocol = "UDP";
+            info = QString("Src Port: %1, Dst Port: %2")
+                .arg(QString::fromStdString(parsedPacket->srcPort))
+                .arg(QString::fromStdString(parsedPacket->destPort));
+
+            if (parsedPacket->srcPort == "53" || parsedPacket->destPort == "53")
+                info += ", DNS Packet";
+        }
+        else if (parsedPacket->protocol == IPPROTO_ICMP) {
+            source = QString::fromStdString(parsedPacket->srcIP);
+            destination = QString::fromStdString(parsedPacket->destIP);
+            protocol = "ICMP";
+            info = QString("ICMP Type: %1, Code: %2")
+                .arg(parsedPacket->icmpType)
+                .arg(parsedPacket->icmpCode);
+        }
+        else if (parsedPacket->protocol == IPPROTO_IGMP) {
+            source = QString::fromStdString(parsedPacket->srcIP);
+            destination = QString::fromStdString(parsedPacket->destIP);
+            protocol = "IGMP";
+            info = QString("IGMP Type: %1, Max Response Time: %2, Group Address: %3")
+                .arg(parsedPacket->igmpType)
+                .arg(parsedPacket->maxResponseTime)
+                .arg(QString::fromStdString(parsedPacket->groupAddr));
+        }
     }
-    else if (parsedPacket->protocol == IPPROTO_UDP) {
-        source = QString::fromStdString(parsedPacket->srcIP);
-        destination = QString::fromStdString(parsedPacket->destIP);
-        protocol = "UDP";
-        info = QString("Src Port: %1, Dst Port: %2")
-            .arg(QString::fromStdString(parsedPacket->srcPort))
-            .arg(QString::fromStdString(parsedPacket->destPort));
+    else if (parsedPacket->etherType == ETHERTYPE_ARP) {
+        source = QString::fromStdString(parsedPacket->srcMAC);
+        destination = QString::fromStdString(parsedPacket->destMAC);
+        protocol = "ARP";
+        info = QString("Hardware Type: %1, Protocol Type: %2")
+            .arg(parsedPacket->hardwareType)
+            .arg(parsedPacket->protocolType);
     }
     else {
         source = QString::fromStdString(parsedPacket->srcMAC);
         destination = QString::fromStdString(parsedPacket->destMAC);
         protocol = "Other";
+        info = "Unknown Protocol";
     }
 
 
@@ -164,7 +208,7 @@ void MainWindow::updatePacketLists(ParsedPacket* parsedPacket, const struct pcap
         new QTableWidgetItem(protocol),
         new QTableWidgetItem(QString::number(header->caplen)),
         new QTableWidgetItem(info)
-        );
+    );
 
     packetLists.push_back(rowData);
 }
@@ -234,7 +278,7 @@ void MainWindow::updatePacketDetails(ParsedPacket* parsedPacket, const struct pc
                 httpsItem->setText(0, "HTTPS");
                 httpsItem->addChild(new QTreeWidgetItem(QStringList() << QString::fromStdString(parsedPacket->payload)));
             }
-                
+
 
         }
         else if (parsedPacket->protocol == IPPROTO_UDP) {
@@ -250,39 +294,73 @@ void MainWindow::updatePacketDetails(ParsedPacket* parsedPacket, const struct pc
             if (parsedPacket->srcPort == "53" || parsedPacket->destPort == "53") {
                 QTreeWidgetItem* dnsItem = new QTreeWidgetItem(udpItem);
                 dnsItem->setText(0, "DNS");
-                dnsItem->addChild(new QTreeWidgetItem(QStringList() << QString::fromStdString(parsedPacket->payload)));
+                QString payloadText = QString::fromUtf8(parsedPacket->payload.c_str());
+                dnsItem->addChild(new QTreeWidgetItem(QStringList() << payloadText));
             }
         }
         else if (parsedPacket->protocol == IPPROTO_ICMP) {
             QTreeWidgetItem* icmpItem = new QTreeWidgetItem(ipItem);
             icmpItem->setText(0, "Internet Control Message Protocol (ICMP)");
 
-            // 查找 ICMP 类型描述
+            // Look up ICMP Type description
             std::string icmpTypeDescription = icmpTypeDescriptions.count(parsedPacket->icmpType)
                 ? icmpTypeDescriptions.at(parsedPacket->icmpType)
                 : "Unknown Type (" + std::to_string(parsedPacket->icmpType) + ")";
 
-            // 查找 ICMP 代码描述，根据不同类型处理不同的代码
+            // Determine ICMP Code description based on specific type
             std::string icmpCodeDescription;
-            if (parsedPacket->icmpType == 3) {  // Destination Unreachable
+            switch (parsedPacket->icmpType) {
+            case 0:  // Echo Reply
+                icmpCodeDescription = "Echo Reply";
+                break;
+            case 3:  // Destination Unreachable
                 icmpCodeDescription = icmpCodeDestUnreachable.count(parsedPacket->icmpCode)
                     ? icmpCodeDestUnreachable.at(parsedPacket->icmpCode)
                     : "Unknown Code (" + std::to_string(parsedPacket->icmpCode) + ")";
-            }
-            else if (parsedPacket->icmpType == 11) {  // Time Exceeded
+                break;
+            case 5:  // Redirect
+                icmpCodeDescription = "Redirect: " + (icmpCodeRedirect.count(parsedPacket->icmpCode)
+                    ? icmpCodeRedirect.at(parsedPacket->icmpCode)
+                    : "Unknown Code (" + std::to_string(parsedPacket->icmpCode) + ")");
+                break;
+            case 8:  // Echo Request
+                icmpCodeDescription = "Echo Request";
+                break;
+            case 11:  // Time Exceeded
                 icmpCodeDescription = icmpCodeTimeExceeded.count(parsedPacket->icmpCode)
                     ? icmpCodeTimeExceeded.at(parsedPacket->icmpCode)
                     : "Unknown Code (" + std::to_string(parsedPacket->icmpCode) + ")";
-            }
-            else {
+                break;
+            case 12:  // Parameter Problem
+                icmpCodeDescription = "Parameter Problem: " + (icmpCodeParamProblem.count(parsedPacket->icmpCode)
+                    ? icmpCodeParamProblem.at(parsedPacket->icmpCode)
+                    : "Unknown Code (" + std::to_string(parsedPacket->icmpCode) + ")");
+                break;
+            default:
                 icmpCodeDescription = "Code: (" + std::to_string(parsedPacket->icmpCode) + ")";
             }
 
-            QString icmpType = QString("ICMP Type: %1").arg(QString::fromStdString(icmpTypeDescription));
-            QString icmpCode = QString("ICMP Code: %1").arg(QString::fromStdString(icmpCodeDescription));
+            QString icmpType = QString("ICMP Type: %1 (%2)")
+                .arg(parsedPacket->icmpType)
+                .arg(QString::fromStdString(icmpTypeDescription));
+            QString icmpCode = QString("ICMP Code: %1 (%2)")
+                .arg(parsedPacket->icmpCode)
+                .arg(QString::fromStdString(icmpCodeDescription));
 
+            // Add type and code details to ICMP tree
             icmpItem->addChild(new QTreeWidgetItem(QStringList() << icmpType));
             icmpItem->addChild(new QTreeWidgetItem(QStringList() << icmpCode));
+
+            // Additional details for common ICMP types
+            if (parsedPacket->icmpType == 8 || parsedPacket->icmpType == 0) {  // Echo Request or Reply
+                icmpItem->addChild(new QTreeWidgetItem(QStringList() << "Ping operation detected"));
+            }
+            else if (parsedPacket->icmpType == 3) {  // Destination Unreachable
+                icmpItem->addChild(new QTreeWidgetItem(QStringList() << "Error: Destination Unreachable"));
+            }
+            else if (parsedPacket->icmpType == 11) {  // Time Exceeded
+                icmpItem->addChild(new QTreeWidgetItem(QStringList() << "Error: Packet Lifetime Expired"));
+            }
         }
     }
     ethernetItems.push_back(ethernetItem);
@@ -461,7 +539,7 @@ void MainWindow::setupConnection() {
         if (fileName.isEmpty())
             return;
 
-        
+
         if (sniffer->saveAllPackets(fileName.toStdString(), headers, packets) == -1) {
             QMessageBox::critical(this, "Failed save", "Save packets error");
             return;
