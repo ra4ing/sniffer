@@ -58,6 +58,10 @@ ParsedPacket* PacketParser::parsePacket(const struct pcap_pkthdr* header, const 
                 parseHTTP(packet, parsedPacket);
             else if (parsedPacket->srcPort == "443" || parsedPacket->destPort == "443")
                 parseHTTPS(packet, parsedPacket);
+            else if (parsedPacket->srcPort == "21" || parsedPacket->destPort == "21")
+                parseFTPControl(packet, parsedPacket);
+            else if (parsedPacket->srcPort == "20" || parsedPacket->destPort == "20")
+                parseFTPData(packet, parsedPacket);
         }
         else if (parsedPacket->protocol == IPPROTO_UDP) {
             parseUDPHeader(packet, parsedPacket);
@@ -151,6 +155,30 @@ void PacketParser::parseTCPHeader(const u_char* packet, ParsedPacket* parsedPack
     parsedPacket->tcpFlags = tcpHeader->th_flags;
 
     parsedPacket->windowSize = ntohs(tcpHeader->window);
+}
+
+void PacketParser::parseFTPControl(const u_char* packet, ParsedPacket* parsedPacket) {
+    const u_char* payload = packet + sizeof(struct ether_header) + sizeof(struct ip) + sizeof(struct tcphdr);
+    size_t payloadSize = ntohs(((struct ip*)(packet + sizeof(struct ether_header)))->ip_len) -
+                         (sizeof(struct ip) + sizeof(struct tcphdr));
+
+    std::string ftpControlData(reinterpret_cast<const char*>(payload), payloadSize);
+
+    if (std::regex_search(ftpControlData, std::regex(R"(^\s*(USER|PASS|ACCT|CWD|CDUP|QUIT|REIN|PORT|PASV|TYPE|STRU|MODE|RETR|STOR|STOU|APPE|ALLO|REST|RNFR|RNTO|ABOR|DELE|RMD|MKD|PWD|LIST|NLST|SITE|SYST|STAT|HELP|NOOP)\s)"))) {
+        parsedPacket->payload = "FTP Command: " + ftpControlData;
+    } else if (std::regex_search(ftpControlData, std::regex(R"(^\d{3}\s)"))) {  // FTP 响应代码
+        parsedPacket->payload = "FTP Response: " + ftpControlData;
+    } else {
+        parsedPacket->payload = "Unknown FTP Control Content";
+    }
+}
+
+void PacketParser::parseFTPData(const u_char* packet, ParsedPacket* parsedPacket) {
+    const u_char* payload = packet + sizeof(struct ether_header) + sizeof(struct ip) + sizeof(struct tcphdr);
+    size_t payloadSize = ntohs(((struct ip*)(packet + sizeof(struct ether_header)))->ip_len) -
+                         (sizeof(struct ip) + sizeof(struct tcphdr));
+
+    parsedPacket->payload = "FTP Data Transfer: " + std::to_string(payloadSize) + " bytes";
 }
 
 void PacketParser::parseHTTP(const u_char* packet, ParsedPacket* parsedPacket) {

@@ -103,7 +103,8 @@ private:
     void parseHTTP(const u_char* packet, ParsedPacket* parsedPacket);
     void parseHTTPS(const u_char* packet, ParsedPacket* parsedPacket);
     void parseDNS(const u_char* packet, ParsedPacket* parsedPacket);
-    void parseFTP(const u_char* packet, ParsedPacket* parsedPacket);
+    void parseFTPControl(const u_char* packet, ParsedPacket* parsedPacket);
+    void parseFTPData(const u_char* packet, ParsedPacket* parsedPacket);
 
     std::string parseDNSName(const u_char* packet, size_t& offset);
     std::vector<ParsedPacket> parsedPackets;

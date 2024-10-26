@@ -278,8 +278,16 @@ void MainWindow::updatePacketDetails(ParsedPacket* parsedPacket, const struct pc
                 httpsItem->setText(0, "HTTPS");
                 httpsItem->addChild(new QTreeWidgetItem(QStringList() << QString::fromStdString(parsedPacket->payload)));
             }
-
-
+            else if (parsedPacket->srcPort == "21" || parsedPacket->destPort == "21") {
+                QTreeWidgetItem* ftpcItem = new QTreeWidgetItem(tcpItem);
+                ftpcItem->setText(0, "HTTPS");
+                ftpcItem->addChild(new QTreeWidgetItem(QStringList() << QString::fromStdString(parsedPacket->payload)));
+            }
+            else if (parsedPacket->srcPort == "20" || parsedPacket->destPort == "20") {
+                QTreeWidgetItem* ftpdItem = new QTreeWidgetItem(tcpItem);
+                ftpdItem->setText(0, "HTTPS");
+                ftpdItem->addChild(new QTreeWidgetItem(QStringList() << QString::fromStdString(parsedPacket->payload)));
+            }
         }
         else if (parsedPacket->protocol == IPPROTO_UDP) {
             QTreeWidgetItem* udpItem = new QTreeWidgetItem(ipItem);
