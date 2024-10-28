@@ -94,7 +94,8 @@ void MainWindow::setupAction() {
 void MainWindow::pushPacketList(int idx) {
     int row = ui->packetList->rowCount();
     ui->packetList->insertRow(row);
-
+    rowMapping[row] = idx;
+    
     PacketListData* packetListData = packetLists.at(idx);
     ui->packetList->setItem(row, 0, packetListData->timeElapsed->clone());
     ui->packetList->setItem(row, 1, packetListData->source->clone());
@@ -115,7 +116,7 @@ void MainWindow::updatePacketLists(ParsedPacket* parsedPacket, const struct pcap
             new QTableWidgetItem(""),
             new QTableWidgetItem(""),
             new QTableWidgetItem("Packet Error: header or packet")
-        );
+            );
 
         packetLists.push_back(rowData);
         return;
@@ -208,7 +209,7 @@ void MainWindow::updatePacketLists(ParsedPacket* parsedPacket, const struct pcap
         new QTableWidgetItem(protocol),
         new QTableWidgetItem(QString::number(header->caplen)),
         new QTableWidgetItem(info)
-    );
+        );
 
     packetLists.push_back(rowData);
 }
@@ -409,11 +410,17 @@ void MainWindow::clearLastCapture() {
     packetListIndex = 0;
     ui->packetList->clearContents();
     ui->packetList->setRowCount(0);
+    rowMapping.clear();
 
     for (auto ethernetItem : ethernetItems)
         delete ethernetItem;
     ethernetItems.clear();
 
+    for (auto packetList : packetLists)
+        delete packetList;
+    packetLists.clear();
+
+    hexViews.clear();
     headers.clear();
     packets.clear();
     currentHeader = nullptr;
@@ -495,17 +502,17 @@ void MainWindow::setupConnection() {
 
     /* packetList */
     connect(ui->packetList, &QTableWidget::itemSelectionChanged, this, [this]() {
-        int currentRow = ui->packetList->currentRow();
-        if (currentRow >= 0 && currentRow < ethernetItems.size()) {
+        int idx = rowMapping[ui->packetList->currentRow()];
+        if (idx >= 0 && idx < ethernetItems.size()) {
             ui->packetDetails->clear();
-            ui->packetDetails->addTopLevelItem(ethernetItems[currentRow]->clone());
+            ui->packetDetails->addTopLevelItem(ethernetItems[idx]->clone());
             ui->packetDetails->expandAll();
 
             ui->hexView->clear();
-            ui->hexView->setPlainText(hexViews[currentRow]);
+            ui->hexView->setPlainText(hexViews[idx]);
 
-            currentHeader = headers[currentRow];
-            currentPacket = packets[currentRow];
+            currentHeader = headers[idx];
+            currentPacket = packets[idx];
 
             autoScrollEnabled = false;
             enableScrollingAction->setText("Enable Auto Scroll");
@@ -603,6 +610,7 @@ void MainWindow::setupConnection() {
         packetListIndex = 0;
         ui->packetList->clearContents();
         ui->packetList->setRowCount(0);
+        rowMapping.clear();
 
         int result = sniffer->filterCapturedPackets(filterText.toStdString(),
             headers,
@@ -623,11 +631,8 @@ void MainWindow::setupConnection() {
         if (ui->afterSavedFilter->findText(filterText) == -1)
             ui->afterSavedFilter->addItem(filterText);
 
-
-        for (int index : filteredIndex) {
-            std::cout << index << std::endl;
+        for (int index : filteredIndex)
             pushPacketList(index);
-        }
 
         });
 }

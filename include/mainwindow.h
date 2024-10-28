@@ -19,7 +19,7 @@ struct PacketListData {
     QTableWidgetItem* info;
 
     PacketListData(QTableWidgetItem* time, QTableWidgetItem* src, QTableWidgetItem* dst, QTableWidgetItem* proto, QTableWidgetItem* len, QTableWidgetItem* inf)
-    : timeElapsed(time), source(src), destination(dst), protocol(proto), length(len), info(inf) {}
+    : timeElapsed(time), source(src), destination(dst), protocol(proto), length(len), info(inf){}
 };
 
 QT_BEGIN_NAMESPACE
@@ -68,6 +68,7 @@ private:
     std::function<void(u_char* user, const struct pcap_pkthdr* header, const u_char* packet)> packetHandler;
 
     timeval startTime;
+    QMap<int, int> rowMapping;
     std::vector<PacketListData*> packetLists;
     std::vector<QTreeWidgetItem*> ethernetItems;
     std::vector<QString> hexViews;
